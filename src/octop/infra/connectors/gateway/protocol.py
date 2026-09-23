@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -51,9 +52,21 @@ def handle_mcp_request(
                 arguments = nested
         try:
             text = call_gateway_tool(kind, creds, str(name), arguments)
+            expired = False
+            if kind == "xm-store":
+                try:
+                    feedback = json.loads(text)
+                except ValueError:
+                    feedback = None
+                expired = (
+                    isinstance(feedback, dict)
+                    and feedback.get("status") == "failed"
+                    and isinstance(feedback.get("error"), dict)
+                    and feedback["error"].get("code") == "TOKEN_EXPIRED"
+                )
             return _ok(
                 req_id,
-                {"content": [{"type": "text", "text": text}], "isError": False},
+                {"content": [{"type": "text", "text": text}], "isError": expired},
             )
         except Exception as exc:
             logger.exception("internal mcp tool %s failed", name)

@@ -12,6 +12,7 @@ from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import effective_permissions
 from octop.infra.utils.locale import normalize_locale
+from octop.infra.xm_store import authenticate_company_user
 
 router = APIRouter()
 
@@ -50,6 +51,11 @@ class LoginBody(BaseModel):
     username: str
     password: str
     captcha_token: str | None = Field(default=None, max_length=4096)
+
+
+class XmStoreLoginBody(BaseModel):
+    login_name: str = Field(min_length=1)
+    password: str = Field(min_length=1)
 
 
 class CaptchaPublicResponse(BaseModel):
@@ -106,6 +112,32 @@ async def login(
     user = await server.user_manager.authenticate(body.username, body.password)
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
+    secret = server.services.secret_repo.get("jwt")
+    ttl = server.services.config.access_token_ttl_seconds
+    token = sign_token(
+        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
+    )
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": ttl,
+        "user": _user_json(user, locale=user.locale),
+    }
+
+
+@router.post("/xm-store/login", summary="Sign in with company store account")
+async def login_xm_store(
+    body: XmStoreLoginBody, server: Any = Depends(get_server)
+) -> dict[str, Any]:
+    """Proxy company password login and issue a normal Octop user session."""
+    if server.user_manager.count() == 0:
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
+    user = await authenticate_company_user(
+        body.login_name,
+        body.password,
+        services=server.services,
+        user_manager=server.user_manager,
+    )
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
     token = sign_token(

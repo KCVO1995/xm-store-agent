@@ -95,6 +95,19 @@ def get_mcp_oauth_remote(kind: str) -> ConnectorCatalogEntry | None:
 
 _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
     ConnectorCatalogEntry(
+        kind="xm-store",
+        name="我的门店",
+        description="查询当前公司账号有权限的门店",
+        auth_kind="personal_token",
+        doc_url="https://digital.yujianxiaomian.com/meet-digital-manager/doc.html",
+        icon="store",
+        color="#d53b32",
+        phase="available",
+        mcp_mode="gateway",
+        category="productivity",
+        allowed_tools=("list_my_stores",),
+    ),
+    ConnectorCatalogEntry(
         kind="tencent-docs",
         name="腾讯文档",
         description="读写腾讯文档、智能表格与空间文件",

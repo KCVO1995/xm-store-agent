@@ -3,5 +3,6 @@
 ALTER TABLE threads ADD COLUMN conversation_mode TEXT;
 ALTER TABLE threads ADD COLUMN pending_plan_path TEXT;
 ALTER TABLE threads ADD COLUMN hitl_policy TEXT;
+ALTER TABLE threads ADD COLUMN xm_store_id TEXT;
 
 UPDATE _schema_version SET version = 17;

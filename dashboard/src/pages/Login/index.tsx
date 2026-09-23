@@ -70,6 +70,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
+  const [localLogin, setLocalLogin] = useState(false);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<OauthProviderStatus[]>([]);
@@ -198,11 +199,15 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
-    if (!username || !password || !captchaReady) return;
+    if (!username || !password || (localLogin && !captchaReady)) return;
     setLoading(true);
     try {
-      const token = await captchaRef.current?.getToken();
-      const res = await authApi.login(username, password, token);
+      const token = localLogin
+        ? await captchaRef.current?.getToken()
+        : undefined;
+      const res = localLogin
+        ? await authApi.login(username, password, token)
+        : await authApi.loginXmStore(username, password);
       setAuthToken(res.access_token);
       await applyUserLocale(res.user.locale);
       void refreshServerLabels(res.user.locale);
@@ -279,7 +284,9 @@ export default function LoginPage() {
           prefix={
             <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
           }
-          placeholder={t("login.username")}
+          placeholder={
+            localLogin ? t("login.username") : t("login.companyUsername")
+          }
           size="large"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -299,15 +306,17 @@ export default function LoginPage() {
           style={{ borderRadius: 10 }}
         />
 
-        <CaptchaField
-          ref={captchaRef}
-          config={captcha}
-          resetKey={captchaResetKey}
-          slideHint={t("login.slideHint")}
-          slideVerifiedLabel={t("login.slideVerified")}
-          unsupportedLabel={t("login.unsupportedCaptcha")}
-          onReadyChange={setCaptchaReady}
-        />
+        {localLogin && (
+          <CaptchaField
+            ref={captchaRef}
+            config={captcha}
+            resetKey={captchaResetKey}
+            slideHint={t("login.slideHint")}
+            slideVerifiedLabel={t("login.slideVerified")}
+            unsupportedLabel={t("login.unsupportedCaptcha")}
+            onReadyChange={setCaptchaReady}
+          />
+        )}
 
         <Button
           type="primary"
@@ -315,43 +324,61 @@ export default function LoginPage() {
           block
           loading={loading}
           onClick={handleLogin}
-          disabled={!username || !password || !captchaReady}
+          disabled={!username || !password || (localLogin && !captchaReady)}
           style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
         >
           {t("login.submit")}
         </Button>
 
-        <div
+        <button
+          type="button"
+          data-testid="login-local-admin-toggle"
+          onClick={() => setLocalLogin((value) => !value)}
           style={{
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 8,
+            border: "none",
+            background: "none",
+            color: "var(--fn-text-tertiary)",
+            cursor: "pointer",
           }}
         >
-          <button
-            type="button"
-            data-testid="login-forgot-password-toggle"
-            onClick={() => setShowForgotHelp(true)}
+          {localLogin
+            ? t("login.companyLogin", "公司账号登录")
+            : t("login.localAdminLogin", "管理员本地登录")}
+        </button>
+
+        {localLogin && (
+          <div
             style={{
-              margin: 0,
-              padding: 0,
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              fontSize: 13,
-              lineHeight: 1.5,
-              color: "var(--fn-text-tertiary)",
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            {t("login.forgotPassword", "Forgot password?")}
-          </button>
-          <ForgotPasswordModal
-            open={showForgotHelp}
-            onClose={() => setShowForgotHelp(false)}
-          />
-        </div>
+            <button
+              type="button"
+              data-testid="login-forgot-password-toggle"
+              onClick={() => setShowForgotHelp(true)}
+              style={{
+                margin: 0,
+                padding: 0,
+                border: "none",
+                background: "none",
+                cursor: "pointer",
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: "var(--fn-text-tertiary)",
+              }}
+            >
+              {t("login.forgotPassword", "Forgot password?")}
+            </button>
+            <ForgotPasswordModal
+              open={showForgotHelp}
+              onClose={() => setShowForgotHelp(false)}
+            />
+          </div>
+        )}
 
         {providers.length > 0 && (
           <>

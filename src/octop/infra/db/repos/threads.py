@@ -70,6 +70,7 @@ class ThreadRow:
     conversation_mode: str | None = None
     pending_plan_path: str | None = None
     hitl_policy: str | None = None
+    xm_store_id: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -89,6 +90,10 @@ class ThreadRow:
             hitl_policy = r["hitl_policy"]
         except (KeyError, IndexError):
             hitl_policy = None
+        try:
+            xm_store_id = r["xm_store_id"]
+        except (KeyError, IndexError):
+            xm_store_id = None
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -107,6 +112,7 @@ class ThreadRow:
             conversation_mode=str(conversation_mode) if conversation_mode else None,
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
             hitl_policy=str(hitl_policy) if hitl_policy else None,
+            xm_store_id=str(xm_store_id) if xm_store_id is not None else None,
         )
 
 
@@ -270,6 +276,13 @@ class ThreadRepo:
             conn.execute(
                 "UPDATE threads SET pinned = ? WHERE thread_id = ?",
                 (bool_int(pinned), thread_id),
+            )
+
+    def set_xm_store_id(self, thread_id: str, store_id: str | None) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET xm_store_id = ? WHERE thread_id = ?",
+                (store_id, thread_id),
             )
 
     def update_composer(

@@ -188,6 +188,17 @@ export const authApi = {
     return { ...raw, token: raw.access_token };
   },
 
+  loginXmStore: async (
+    loginName: string,
+    password: string,
+  ): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>("/auth/xm-store/login", {
+      method: "POST",
+      body: JSON.stringify({ login_name: loginName, password }),
+    });
+    return { ...raw, token: raw.access_token };
+  },
+
   /** Return whether the configured OIDC provider can accept logins. */
   getOidcStatus: () => request<OidcStatus>("/auth/oidc/status"),
 

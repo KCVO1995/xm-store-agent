@@ -8,12 +8,13 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { App } from "antd";
+import { App, Button, Select } from "antd";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { agentChatApi } from "../../../api/modules/agentChat";
+import { xmStoreApi, type XmStoreList } from "../../../api/modules/xmStore";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -192,6 +193,42 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       () => initialText || readInputDraft(agentId, threadId),
     );
     const [polishing, setPolishing] = useState(false);
+    const [storeList, setStoreList] = useState<XmStoreList | null>(null);
+    const [storeLoading, setStoreLoading] = useState(false);
+    const [storeError, setStoreError] = useState(false);
+    const [storeRetry, setStoreRetry] = useState(0);
+
+    useEffect(() => {
+      let cancelled = false;
+      setStoreList(null);
+      setStoreLoading(true);
+      setStoreError(false);
+      void xmStoreApi
+        .list(threadId)
+        .then((next) => {
+          if (!cancelled) setStoreList(next);
+        })
+        .catch(() => {
+          if (!cancelled) setStoreError(true);
+        })
+        .finally(() => {
+          if (!cancelled) setStoreLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [threadId, storeRetry]);
+
+    const selectStore = async (storeId: string | null) => {
+      try {
+        await xmStoreApi.select(storeId, threadId);
+        setStoreList((current) =>
+          current ? { ...current, selected_store_id: storeId } : current,
+        );
+      } catch {
+        antMessage.error(t("chat.storeSelectFailed", "门店选择失败，请重试"));
+      }
+    };
     // Track whether the user has manually edited the text after a prefill.
     // Once they start editing, we must not overwrite their input with a new
     // initialText value (e.g. from a parent re-render or a stale effect).
@@ -729,6 +766,50 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           />
         )}
         <div className={styles.inputWrapper}>
+          {(storeList?.enabled || storeError || storeLoading) && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px 0",
+              }}
+            >
+              <span
+                style={{
+                  whiteSpace: "nowrap",
+                  fontSize: 12,
+                  color: "var(--fn-text-tertiary)",
+                }}
+              >
+                {t("chat.storeSelector", "门店")}
+              </span>
+              {storeError ? (
+                <Button
+                  size="small"
+                  onClick={() => setStoreRetry((value) => value + 1)}
+                >
+                  {t("chat.storeLoadRetry", "门店加载失败，重试")}
+                </Button>
+              ) : (
+                <Select
+                  showSearch
+                  allowClear
+                  loading={storeLoading}
+                  disabled={storeLoading || !storeList?.stores.length}
+                  style={{ minWidth: 180, maxWidth: "100%" }}
+                  placeholder={t("chat.storePlaceholder", "选择对话门店")}
+                  value={storeList?.selected_store_id ?? undefined}
+                  optionFilterProp="label"
+                  options={storeList?.stores.map((store) => ({
+                    value: store.store_id,
+                    label: `${store.store_name} (${store.store_no})`,
+                  }))}
+                  onChange={(value) => void selectStore(value ?? null)}
+                />
+              )}
+            </div>
+          )}
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}

@@ -266,6 +266,12 @@ function handleUnauthorized(): void {
   window.location.replace("/login");
 }
 
+/** Apply the same logout flow when a streamed MCP tool reports credential expiry. */
+export function expireAuthSession(): void {
+  clearAuthToken();
+  handleUnauthorized();
+}
+
 /**
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().

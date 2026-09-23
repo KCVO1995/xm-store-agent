@@ -1420,6 +1420,7 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "conversation_mode", "TEXT")
     _ensure_column(db, "threads", "pending_plan_path", "TEXT")
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
+    _ensure_column(db, "threads", "xm_store_id", "TEXT")
 
 
 def _repair_legacy_schema(db: DatabasePool) -> None:

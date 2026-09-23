@@ -1143,6 +1143,10 @@
     "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。"
   },
   "chat": {
+    "storeSelector": "门店",
+    "storePlaceholder": "选择对话门店",
+    "storeLoadRetry": "门店加载失败，重试",
+    "storeSelectFailed": "门店选择失败，请重试",
     "sharedExpert": {
       "banner": "共享专家 · 由 {{name}} 提供",
       "flag": "共享"
@@ -4871,6 +4875,9 @@
     "label": "当前专家"
   },
   "login": {
+    "companyUsername": "公司账号",
+    "companyLogin": "公司账号登录",
+    "localAdminLogin": "管理员本地登录",
     "title": "登录",
     "subtitle": "懂你、帮你、陪你成长的智能伙伴",
     "username": "用户名或邮箱",

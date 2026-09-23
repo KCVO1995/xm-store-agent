@@ -49,6 +49,8 @@ import {
 import { isFileToolName } from "./constants";
 import { browserApi } from "../../api/modules/browser";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
+import { xmStoreApi } from "../../api/modules/xmStore";
+import { expireAuthSession } from "../../api/request";
 import type { TokenUsage } from "../../api/types";
 import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
@@ -113,6 +115,9 @@ export default function ChatPage() {
 function ChatPageInner() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  useEffect(() => {
+    void xmStoreApi.list().catch(() => undefined);
+  }, []);
   const location = useLocation();
   prefetchVoiceConfig();
   const { agentId: routeAgentId, threadId } = useParams<{
@@ -565,6 +570,11 @@ function ChatPageInner() {
       return null;
     }
     return acc;
+  }, [messages]);
+  useEffect(() => {
+    if (messages.some((item) => item.errorInfo?.code === "TOKEN_EXPIRED")) {
+      expireAuthSession();
+    }
   }, [messages]);
   const sessionUsageLabel = formatRunUsage(sessionUsage, {
     input: t("chatUsage.input"),

@@ -1143,6 +1143,10 @@
     "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models."
   },
   "chat": {
+    "storeSelector": "Store",
+    "storePlaceholder": "Select a store",
+    "storeLoadRetry": "Store list failed; retry",
+    "storeSelectFailed": "Could not select store; retry",
     "sharedExpert": {
       "banner": "Shared expert · provided by {{name}}",
       "flag": "Shared"
@@ -4732,6 +4736,9 @@
     "label": "Active Expert"
   },
   "login": {
+    "companyUsername": "Company account",
+    "companyLogin": "Company account login",
+    "localAdminLogin": "Local admin login",
     "title": "Sign in",
     "subtitle": "An intelligent partner that understands you, helps you, and grows with you",
     "username": "Username or email",

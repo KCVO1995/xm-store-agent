@@ -190,6 +190,7 @@ def build_app(server: OctopServer) -> FastAPI:
         users,
         voice,
         workspace,
+        xm_store,
     )
     from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
@@ -209,6 +210,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(auth_oauth.router, "/api/auth", ["auth"]),
             _RouterMount(invites.public_router, "/api/auth/invite", ["auth"]),
             _RouterMount(preferences.router, "/api", ["auth"]),
+            _RouterMount(xm_store.router, "/api", ["chat"]),
             _RouterMount(i18n.router, "/api", ["i18n"]),
             _RouterMount(health.router, "/api/health", ["health"]),
             _RouterMount(invites.admin_router, "/api/users/invites", ["users"]),
