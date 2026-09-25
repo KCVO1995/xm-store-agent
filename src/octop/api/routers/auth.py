@@ -193,6 +193,10 @@ async def login_xm_store_by_code(
 
 
 def _company_session(user: Any, server: Any) -> dict[str, Any]:
+    if server.app_runtime is not None:
+        for agent in server.services.agent_repo.list_by_user(user.id):
+            if agent.name == "门店助手":
+                server.app_runtime.agent_registry.sync_skill_package_dirs(agent.agent_id)
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
     token = sign_token(

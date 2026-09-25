@@ -256,6 +256,13 @@ async def _company_user_from_profile(
     from octop.infra.boh import BOH_CONNECTOR_KIND, ensure_boh_connector_for_user  # noqa: PLC0415
 
     ensure_boh_connector_for_user(services, user.id)
+    from octop.infra.skills.boh_managed import (  # noqa: PLC0415
+        ensure_boh_skill_package,
+        mount_existing_store_assistants,
+    )
+
+    package_id = ensure_boh_skill_package(services, services.paths)
+    mount_existing_store_assistants(services, package_id)
     boh = repo.get_by_user_kind(user.id, BOH_CONNECTOR_KIND)
     if boh is not None and boh.has_credentials:
         boh_creds = connector_service.decrypt(boh.instance_id)

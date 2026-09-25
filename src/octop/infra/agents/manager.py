@@ -37,6 +37,7 @@ from octop.infra.agents.profile import (
     id_list_from_row,
     overlay_skill_package_ids,
     parse_config_json,
+    parse_skill_package_ids_json,
     strip_profile_config,
 )
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
@@ -606,6 +607,18 @@ class AgentManager:
                 if spec.skill_package_ids is not None
                 else profile.get("skill_package_ids")
             )
+            if spec.user_id is not None and (
+                spec.template_name == "xm-store-assistant" or spec.name == "门店助手"
+            ):
+                company = self._repos.connector_repo.get_by_user_kind(spec.user_id, "xm-store")
+                if company is not None and company.status == "active" and company.has_credentials:
+                    from octop.infra.skills.boh_managed import PACKAGE_NAME
+
+                    package = self._repos.skill_package_repo.get_by_name(PACKAGE_NAME)
+                    if package is not None:
+                        ids = parse_skill_package_ids_json(package_ids_json) or []
+                        if package.id not in ids:
+                            package_ids_json = dump_skill_package_ids([*ids, package.id])
             knowledge_ids_json = (
                 dump_id_list(spec.knowledge_base_ids)
                 if spec.knowledge_base_ids is not None

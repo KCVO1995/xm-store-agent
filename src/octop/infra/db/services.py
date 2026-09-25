@@ -9,6 +9,7 @@ from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.backends import BackendRepo
+from octop.infra.db.repos.boh_snapshots import BohSnapshotRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
@@ -61,6 +62,7 @@ class RepoBundle:
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
     sso_repo: SsoRepo
+    boh_snapshot_repo: BohSnapshotRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -90,6 +92,7 @@ class RepoBundle:
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
             sso_repo=SsoRepo(db),
+            boh_snapshot_repo=BohSnapshotRepo(db),
         )
 
 
@@ -174,6 +177,10 @@ class SharedServices:
     @property
     def skill_package_repo(self) -> SkillPackageRepo:
         return self.repos.skill_package_repo
+
+    @property
+    def boh_snapshot_repo(self) -> BohSnapshotRepo:
+        return self.repos.boh_snapshot_repo
 
     @property
     def published_expert_repo(self) -> PublishedExpertRepo:

@@ -1,0 +1,21 @@
+{
+  "id": "xm-store-assistant",
+  "label": {"zh": "门店助手", "en": "Store Assistant"},
+  "description": {"zh": "基于当前会话门店的 BOH 数据查询与分差分析。", "en": "BOH data and variance analysis for the selected store."},
+  "welcome_message": {"zh": "选择门店后，可以问我库存分差、物料和周趋势。", "en": "Select a store to ask about inventory variances."},
+  "icon_name": "store",
+  "color": "#0f766e",
+  "prompt_files": ["SOUL.md"],
+  "task_examples": {
+    "zh": [
+      "分析当前门店本月食材成本分差，并指出盘亏最高的物料",
+      "对比当前门店周考核物料和周标准原物料的报损分差趋势",
+      "查询指定物料在当前门店最近七天的逐日分差异常"
+    ],
+    "en": [
+      "Analyze this month's food-cost variance and the biggest shortages for the selected store",
+      "Compare weekly assessment and standard-material variance trends for the selected store",
+      "Check daily variance anomalies for a specified material over the last seven days"
+    ]
+  }
+}
