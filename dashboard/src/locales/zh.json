@@ -5434,6 +5434,7 @@
     "probeToolsEmpty": "连接正常，但未发现可用工具",
     "supportedTools": "支持的工具",
     "clickToManage": "点击管理连接",
+    "managedByCompanyLogin": "由掌柜账号自动开通",
     "test": "测试",
     "testOk": "连接正常",
     "testFailed": "测试失败",

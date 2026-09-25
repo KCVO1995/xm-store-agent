@@ -322,6 +322,10 @@ class OctopServer:
         db = open_database(config, self.paths)
         run_migrations(db)
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        from octop.infra.boh import ensure_boh_connector_for_user  # noqa: PLC0415
+
+        for company in self.services.connector_repo.list_by_kind("xm-store"):
+            ensure_boh_connector_for_user(self.services, company.user_id)
         from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
 
         boot_from_services(self.services.settings_repo, self.services.secret_repo)

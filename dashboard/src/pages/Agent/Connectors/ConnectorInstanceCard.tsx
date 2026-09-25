@@ -30,10 +30,12 @@ export function ConnectorInstanceCard({
   const user = useCurrentUser();
   const accent = catalogEntry ? connectorAccent(catalogEntry) : "#8c8c8c";
   const isOwner = user?.id === instance.owner_user_id;
+  const managed = catalogEntry?.auth_kind === "managed";
   const ownerLabel =
     instance.owner_display_name || instance.owner_username || "";
   const editable =
     instance.can_manage &&
+    !managed &&
     (catalogEntry != null || (instance.kind === "custom-mcp" && isOwner));
 
   const handleDelete = () => {
@@ -128,13 +130,15 @@ export function ConnectorInstanceCard({
 
       <div className={styles.typeCardFooter}>
         <div className={styles.typeCardHint}>
-          {!instance.has_credentials
+          {managed
+            ? t("connectors.managedByCompanyLogin")
+            : !instance.has_credentials
             ? t("connectors.noCredentials", "缺少凭证")
             : editable
             ? t("connectors.clickToManage", "点击管理连接")
             : t("connectors.sharedReadonly", "共享连接器，仅所有者可管理")}
         </div>
-        {instance.can_manage ? (
+        {instance.can_manage && !managed ? (
           <div
             className={styles.instanceCardActions}
             onClick={(e) => e.stopPropagation()}

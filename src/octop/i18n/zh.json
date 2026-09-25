@@ -512,6 +512,23 @@
     },
     "preflight_failed_summary": "一项或多项预检未通过"
   },
+  "boh": {
+    "company_login_required": "请先使用掌柜账号登录。",
+    "company_relogin_required": "掌柜登录信息已失效或缺少企微 ID，请重新登录。",
+    "store_required": "请先在当前对话中选择门店。",
+    "store_forbidden": "当前账号无权查询该门店的 BOH 数据。",
+    "store_mapping_missing": "该门店缺少 BOH 登录所需的门店信息，请联系管理员。",
+    "report_forbidden": "当前账号没有 BOH 库存汇总报表权限。",
+    "thread_forbidden": "只能查询自己当前对话所选门店的数据。",
+    "invalid_date": "日期应为 YYYY-MM-DD 格式。",
+    "invalid_page": "页码必须在 1 到 50 之间。",
+    "invalid_category": "财务分类参数无效。",
+    "invalid_date_range": "开始日期不能晚于结束日期，统计跨度最多 62 天。",
+    "result_too_large": "BOH 返回的数据超过 256 KiB，请缩小日期范围或财务分类后重试。",
+    "timeout": "BOH 查询超时，请稍后重试。",
+    "unavailable": "BOH 服务暂时不可用，请稍后重试。",
+    "tool_description": "查询当前会话已选门店的 BOH 库存汇总原始数据，单次返回一页，不计算报表。必填 startDate、endDate（YYYY-MM-DD）和 financeCategoryNames（空数组表示全部）；可选 pageIndex，默认 1。固定 dateType=1、pageSize=9999；不能指定其他门店。"
+  },
   "tools": {
     "unknown": "未知工具",
     "read_file": "读取文件",

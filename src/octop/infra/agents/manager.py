@@ -1795,6 +1795,8 @@ class AgentManager:
             user_id=user_id,
             agent_id=agent_id,
             mcp_server_configs=agent.config.mcp_server_configs,
+            repos=self._repos,
+            config=getattr(self, "_config", None),
         )
 
     # ------------------------------------------------------------------
@@ -2502,6 +2504,8 @@ class AgentManager:
                 user_id=uid,
                 agent_id=row.agent_id,
                 mcp_server_configs=cfg.mcp_server_configs,
+                repos=self._repos,
+                config=self._config,
             )
         if team_host:
             self.strip_team_host_runtime_tools(row.agent_id)

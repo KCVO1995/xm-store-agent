@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 AuthKind = Literal[
+    "managed",
     "personal_token",
     "oauth2",
     "auth_code",
@@ -106,6 +107,19 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         mcp_mode="gateway",
         category="productivity",
         allowed_tools=("list_my_stores",),
+    ),
+    ConnectorCatalogEntry(
+        kind="boh",
+        name="BOH 数据",
+        description="查询当前会话门店的 BOH 库存汇总原始数据",
+        auth_kind="managed",
+        doc_url="",
+        icon="store",
+        color="#d53b32",
+        phase="available",
+        mcp_mode="gateway",
+        category="productivity",
+        allowed_tools=("query_store_cos_page",),
     ),
     ConnectorCatalogEntry(
         kind="tencent-docs",
