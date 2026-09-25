@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+import re
+from typing import Any, Literal, Self
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from octop.api.deps import current_user, get_server, sign_token
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import effective_permissions
 from octop.infra.utils.locale import normalize_locale
-from octop.infra.xm_store import authenticate_company_user
+from octop.infra.xm_store import (
+    authenticate_company_user,
+    authenticate_company_user_by_code,
+    send_verification_code,
+)
 
 router = APIRouter()
 
@@ -56,6 +62,26 @@ class LoginBody(BaseModel):
 class XmStoreLoginBody(BaseModel):
     login_name: str = Field(min_length=1)
     password: str = Field(min_length=1)
+
+
+class XmStorePhoneBody(BaseModel):
+    country_code: Literal["86", "852", "65"] = Field(description="Phone country code")
+    phone: str = Field(min_length=8, max_length=11, description="Phone without country code")
+
+    @model_validator(mode="after")
+    def validate_phone(self) -> Self:
+        pattern = r"1[3-9]\d{9}" if self.country_code == "86" else r"\d{8}"
+        if re.fullmatch(pattern, self.phone) is None:
+            raise ValueError("invalid phone number for country code")
+        return self
+
+    @property
+    def full_phone(self) -> str:
+        return self.country_code + self.phone
+
+
+class XmStoreCodeLoginBody(XmStorePhoneBody):
+    code: str = Field(min_length=1, max_length=16, description="SMS verification code")
 
 
 class CaptchaPublicResponse(BaseModel):
@@ -138,6 +164,35 @@ async def login_xm_store(
         services=server.services,
         user_manager=server.user_manager,
     )
+    return _company_session(user, server)
+
+
+@router.post("/xm-store/send-code", status_code=204, summary="Send company login SMS code")
+async def send_xm_store_code(body: XmStorePhoneBody, server: Any = Depends(get_server)) -> Response:
+    """Proxy SMS delivery; code validity and send limits belong to company SSO."""
+    if server.user_manager.count() == 0:
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
+    await asyncio.to_thread(send_verification_code, body.full_phone)
+    return Response(status_code=204)
+
+
+@router.post("/xm-store/login-by-code", summary="Sign in with company SMS code")
+async def login_xm_store_by_code(
+    body: XmStoreCodeLoginBody, server: Any = Depends(get_server)
+) -> dict[str, Any]:
+    """Exchange the company SMS code and issue the same Octop session as password login."""
+    if server.user_manager.count() == 0:
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
+    user = await authenticate_company_user_by_code(
+        body.full_phone,
+        body.code,
+        services=server.services,
+        user_manager=server.user_manager,
+    )
+    return _company_session(user, server)
+
+
+def _company_session(user: Any, server: Any) -> dict[str, Any]:
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
     token = sign_token(

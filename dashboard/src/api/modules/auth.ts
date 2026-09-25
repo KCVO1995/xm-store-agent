@@ -199,6 +199,27 @@ export const authApi = {
     return { ...raw, token: raw.access_token };
   },
 
+  sendXmStoreCode: (countryCode: "86" | "852" | "65", phone: string) =>
+    request<void>("/auth/xm-store/send-code", {
+      method: "POST",
+      body: JSON.stringify({ country_code: countryCode, phone }),
+    }),
+
+  loginXmStoreByCode: async (
+    countryCode: "86" | "852" | "65",
+    phone: string,
+    code: string,
+  ): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>(
+      "/auth/xm-store/login-by-code",
+      {
+        method: "POST",
+        body: JSON.stringify({ country_code: countryCode, phone, code }),
+      },
+    );
+    return { ...raw, token: raw.access_token };
+  },
+
   /** Return whether the configured OIDC provider can accept logins. */
   getOidcStatus: () => request<OidcStatus>("/auth/oidc/status"),
 

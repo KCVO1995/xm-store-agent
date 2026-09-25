@@ -5,10 +5,93 @@ from __future__ import annotations
 import pytest
 
 from octop.api.app import build_app
+from octop.api.routers import auth as auth_router
 from octop.infra import xm_store as store_service
+from octop.infra.boh import BOH_CONNECTOR_KIND
 from octop.infra.connectors.gateway.adapters import xm_store as store_adapter
+from octop.infra.connectors.service import ConnectorService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.xm_store import CONNECTOR_KIND
+
+
+@pytest.mark.asyncio
+async def test_company_sms_login_reuses_password_identity_and_clears_boh_cache(
+    env_with_main_agent, monkeypatch
+):
+    client, server, _admin_auth, _agent_id = env_with_main_agent
+    openapi = build_app(server).openapi()
+    assert "/api/auth/xm-store/send-code" in openapi["paths"]
+    assert "/api/auth/xm-store/login-by-code" in openapi["paths"]
+    sent: list[str] = []
+
+    def fake_password(_name: str, _password: str):
+        return {
+            "platformUserId": "same-user",
+            "platformUserName": "Alice",
+            "token": "old",
+            "qwId": "qw",
+        }
+
+    def fake_code(phone: str, code: str):
+        assert phone == "8613812345678" and code == "123456"
+        return {
+            "platformUserId": "same-user",
+            "platformUserName": "Alice",
+            "token": "new",
+            "qwId": "qw",
+        }
+
+    monkeypatch.setattr(store_service, "login_account", fake_password)
+    monkeypatch.setattr(store_service, "login_by_code", fake_code)
+    monkeypatch.setattr(store_service, "send_verification_code", sent.append)
+    monkeypatch.setattr(auth_router, "send_verification_code", sent.append)
+
+    password = await client.post(
+        "/api/auth/xm-store/login", json={"login_name": "alice", "password": "secret"}
+    )
+    assert password.status_code == 200
+    user_id = password.json()["user"]["id"]
+    connector = ConnectorService(
+        repo=server.services.connector_repo,
+        secret_repo=server.services.secret_repo,
+        settings_repo=server.services.settings_repo,
+        config=server.services.config,
+    )
+    boh = server.services.connector_repo.get_by_user_kind(user_id, BOH_CONNECTOR_KIND)
+    assert boh is not None
+    connector.encrypt_and_store(
+        instance_id=boh.instance_id,
+        payload={
+            "linked_company_connector": "company",
+            "boh_sessions": {"store": {"token": "stale"}},
+        },
+    )
+
+    body = {"country_code": "86", "phone": "13812345678"}
+    for _ in range(2):
+        response = await client.post("/api/auth/xm-store/send-code", json=body)
+        assert response.status_code == 204
+        assert not response.content
+    for country_code in ("852", "65"):
+        response = await client.post(
+            "/api/auth/xm-store/send-code",
+            json={"country_code": country_code, "phone": "91234567"},
+        )
+        assert response.status_code == 204
+    assert sent == ["8613812345678", "8613812345678", "85291234567", "6591234567"]
+    assert (
+        await client.post(
+            "/api/auth/xm-store/send-code", json={"country_code": "86", "phone": "123"}
+        )
+    ).status_code == 422
+
+    sms = await client.post("/api/auth/xm-store/login-by-code", json={**body, "code": "123456"})
+    assert sms.status_code == 200, sms.text
+    assert sms.json()["user"]["id"] == user_id
+    company = server.services.connector_repo.get_by_user_kind(user_id, CONNECTOR_KIND)
+    assert company is not None
+    assert connector.decrypt(company.instance_id)["token"] == "new"
+    assert "boh_sessions" not in connector.decrypt(boh.instance_id)
 
 
 @pytest.mark.asyncio
