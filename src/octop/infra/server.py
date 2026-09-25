@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import logging
 import os
@@ -253,6 +254,7 @@ class OctopServer:
         self._started = False
         self._started_at: int | None = None
         self._sso_service: SsoService | None = None
+        self._boh_snapshot_cleanup_task: asyncio.Task[None] | None = None
 
     # Backward compat: expose user_manager directly
     @property
@@ -322,10 +324,6 @@ class OctopServer:
         db = open_database(config, self.paths)
         run_migrations(db)
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
-        from octop.infra.boh import ensure_boh_connector_for_user  # noqa: PLC0415
-
-        for company in self.services.connector_repo.list_by_kind("xm-store"):
-            ensure_boh_connector_for_user(self.services, company.user_id)
         from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
 
         boot_from_services(self.services.settings_repo, self.services.secret_repo)
@@ -367,6 +365,17 @@ class OctopServer:
         assert self.services is not None
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
+
+        from octop.infra.boh import ensure_boh_connector_for_user  # noqa: PLC0415
+        from octop.infra.skills.boh_managed import (  # noqa: PLC0415
+            ensure_boh_skill_package,
+            mount_existing_store_assistants,
+        )
+
+        for company in self.services.connector_repo.list_by_kind("xm-store"):
+            ensure_boh_connector_for_user(self.services, company.user_id)
+        boh_skill_package_id = ensure_boh_skill_package(self.services, self.paths)
+        mount_existing_store_assistants(self.services, boh_skill_package_id)
 
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             configure_browser_idle_timeout,
@@ -494,6 +503,10 @@ class OctopServer:
             trajectory_service=trajectory_service,
             history_archive=history_archive,
         )
+        self.services.boh_snapshot_repo.purge_expired()
+        self._boh_snapshot_cleanup_task = asyncio.create_task(
+            self._purge_boh_snapshots_periodically(), name="purge-boh-snapshots"
+        )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 
         resume_pending_index_jobs(self.services)
@@ -532,6 +545,11 @@ class OctopServer:
         if not self._started:
             return
         try:
+            if self._boh_snapshot_cleanup_task is not None:
+                self._boh_snapshot_cleanup_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._boh_snapshot_cleanup_task
+                self._boh_snapshot_cleanup_task = None
             if self.app_runtime is not None:
                 rt = self.app_runtime
                 await rt.proactive_scheduler.shutdown()
@@ -548,6 +566,15 @@ class OctopServer:
             self.app_runtime = None
             self._started = False
             logger.info("octop server stopped")
+
+    async def _purge_boh_snapshots_periodically(self) -> None:
+        while True:
+            await asyncio.sleep(60)
+            if self.services is not None:
+                try:
+                    await asyncio.to_thread(self.services.boh_snapshot_repo.purge_expired)
+                except Exception:
+                    logger.exception("failed to purge expired BOH report snapshots")
 
     # ----- helpers -----
 
