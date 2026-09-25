@@ -530,7 +530,7 @@
     "result_too_large": "The BOH response exceeds 256 KiB. Narrow the date range or finance categories.",
     "timeout": "The BOH query timed out. Try again later.",
     "unavailable": "The BOH service is temporarily unavailable. Try again later.",
-    "tool_description": "Query one page of raw BOH inventory-summary data for the store selected in this conversation; no report calculations. Required: startDate and endDate (YYYY-MM-DD), financeCategoryNames ([] means all). Optional: pageIndex (default 1). dateType=1 and pageSize=9999 are fixed; another store cannot be selected."
+    "tool_description": "Query one page of raw BOH inventory-summary data for the store selected in this conversation; no report calculations. Required: startDate and endDate (YYYY-MM-DD), financeCategoryNames ([] means all). Optional: pageIndex (default 1). dateType=1 and pageSize=500 are fixed; the backend supplies the selected store ID, so another store cannot be requested."
   },
   "tools": {
     "unknown": "Unknown tool",

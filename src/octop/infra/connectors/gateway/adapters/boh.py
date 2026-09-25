@@ -35,7 +35,7 @@ def list_tools() -> list[dict[str, Any]]:
                     },
                     "pageIndex": {
                         "type": "integer",
-                        "description": "页码，从 1 开始；每页固定 9999 条。",
+                        "description": "页码，从 1 开始；每页固定 500 条。",
                         "minimum": 1,
                         "maximum": 50,
                         "default": 1,

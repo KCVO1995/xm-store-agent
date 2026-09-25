@@ -85,7 +85,7 @@ def _stores(token):
     ]
 
 
-def _stub_boh_login(monkeypatch, *, permission=True):
+def _stub_boh_login(monkeypatch, *, permission=True, string_store_id=False):
     codes = []
 
     async def code(_client, *, company_token, qw_id, store_oa_id):
@@ -94,12 +94,14 @@ def _stub_boh_login(monkeypatch, *, permission=True):
         return store_oa_id
 
     async def exchange(_client, code):
+        owner = code.removeprefix("oa-").rsplit("-", 1)[0]
         return {
             "token": f"boh-{code}",
             "loginSysUserVo": {
                 "permissionCodes": [boh.REPORT_PERMISSION] if permission else [],
                 "storeList": [
-                    {"id": 100 if code.endswith("-1") else 200, "code": code.removeprefix("oa-")}
+                    {"id": "100" if string_store_id else 100, "code": f"{owner}-1"},
+                    {"id": "200" if string_store_id else 200, "code": f"{owner}-2"},
                 ],
             },
         }
@@ -156,9 +158,10 @@ async def test_boh_managed_connector_is_created_and_cannot_be_shared_or_edited(
     assert repo.get_by_user_kind(user_id, boh.BOH_CONNECTOR_KIND) is not None
 
 
+@pytest.mark.parametrize("string_store_id", [False, True])
 @pytest.mark.asyncio
 async def test_boh_raw_page_is_scoped_cached_and_separate_mcp_tool(
-    env_with_main_agent, monkeypatch
+    env_with_main_agent, monkeypatch, string_store_id
 ):
     client, server, _admin_auth, agent_id = env_with_main_agent
     alice, _ = await _login(client, monkeypatch, "alice")
@@ -166,13 +169,13 @@ async def test_boh_raw_page_is_scoped_cached_and_separate_mcp_tool(
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-boh", store_id="alice-store-1")
     _thread(server, user_id=bob, agent_id=agent_id, name="bob-boh", store_id="bob-store-1")
     monkeypatch.setattr(boh, "list_authorized_stores_with_oa_id", _stores)
-    codes = _stub_boh_login(monkeypatch)
+    codes = _stub_boh_login(monkeypatch, string_store_id=string_store_id)
     calls = []
     raw = {
         "total": 2,
         "records": [{"rawName": "面粉", "lossCost": "0.10", "actualQuantity": 3}],
         "pageIndex": 2,
-        "pageSize": 9999,
+        "pageSize": 500,
         "extra": {"keep": True},
     }
 
@@ -191,12 +194,26 @@ async def test_boh_raw_page_is_scoped_cached_and_separate_mcp_tool(
         "finance_category_names": ["食材成本"],
         "page_index": 2,
     }
-    assert (await service.query(**params))["data"] == raw
+    result = await service.query(**params)
+    assert result["data"] == raw
+    assert result["query"]["storeId"] == ["100"]
+    assert result["query"]["pageSize"] == 500
     assert (await service.query(**params))["data"] == raw
     assert codes == ["oa-alice-1"]
     assert len(calls) == 2
-    assert calls[0]["store_id"] == 100 and calls[0]["page_index"] == 2
+    assert calls[0]["store_id"] == "100" and calls[0]["page_index"] == 2
     assert "amount_summary" not in await service.query(**params)
+    company = server.services.connector_repo.get_by_user_kind(alice, xm_store.CONNECTOR_KIND)
+    assert company is not None and company.credential_blob is not None
+    creds = decrypt_credentials(server.services.secret_repo, company.credential_blob)
+    creds["boh_sessions"]["alice-store-1"]["store_id"] = 100
+    service._connectors.encrypt_and_store(instance_id=company.instance_id, payload=creds)
+    assert (await service.query(**params))["query"]["storeId"] == ["100"]
+    assert codes == ["oa-alice-1"]
+    server.services.thread_repo.set_xm_store_id("alice-boh", "alice-store-2")
+    assert (await service.query(**params))["query"]["storeId"] == ["200"]
+    assert calls[-1]["store_id"] == "200"
+    assert codes == ["oa-alice-1", "oa-alice-2"]
     with pytest.raises(boh.BohQueryError, match="THREAD_FORBIDDEN"):
         await service.query(**{**params, "user_id": bob})
     server.services.thread_repo.set_xm_store_id("alice-boh", "bob-store-1")
@@ -235,7 +252,7 @@ async def test_boh_tool_schema_runtime_identity_and_input_validation(
     _stub_boh_login(monkeypatch)
 
     async def report(_client, **_kwargs):
-        return {"total": 0, "records": [], "pageIndex": 1, "pageSize": 9999}
+        return {"total": 0, "records": [], "pageIndex": 1, "pageSize": 500}
 
     monkeypatch.setattr(boh, "fetch_report_page", report)
     definition = mcp_tools_for_kind("boh")[0]
@@ -247,7 +264,8 @@ async def test_boh_tool_schema_runtime_identity_and_input_validation(
         "financeCategoryNames",
         "pageIndex",
     }
-    assert "9999" in definition["description"]
+    assert "500" in definition["description"]
+    assert "500" in schema["properties"]["pageIndex"]["description"]
     tool = boh.build_boh_report_tool(
         mcp_server_name="boh__test",
         repos=server.services.repos,
@@ -356,8 +374,9 @@ async def test_boh_expiration_permission_and_large_result(env_with_main_agent, m
     assert expired.value.code == ErrorCode.TOKEN_EXPIRED
 
 
+@pytest.mark.parametrize("report_code", [0, "0", 200, "200"])
 @pytest.mark.asyncio
-async def test_boh_http_contract_and_zero_code_response():
+async def test_boh_http_contract_and_success_codes(report_code):
     seen = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -375,9 +394,9 @@ async def test_boh_http_contract_and_zero_code_response():
             "endDate": "2026-09-23",
             "dateType": 1,
             "financeCategoryNames": ["食材成本"],
-            "storeId": [100],
+            "storeId": ["100"],
             "pageIndex": 2,
-            "pageSize": 9999,
+            "pageSize": 500,
             "bzywlflSonNames": None,
             "isMatchRaw": 0,
             "orderingCategoryList": [],
@@ -386,9 +405,9 @@ async def test_boh_http_contract_and_zero_code_response():
             "total": 1,
             "records": [{"rawName": "面粉", "receiveNet": 3.14}],
             "pageIndex": 2,
-            "pageSize": 9999,
+            "pageSize": 500,
         }
-        return httpx.Response(200, json={"code": 0, "data": data})
+        return httpx.Response(200, json={"code": report_code, "data": data})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle), trust_env=False) as client:
         code = await boh.create_login_code(
@@ -398,7 +417,7 @@ async def test_boh_http_contract_and_zero_code_response():
         page = await boh.fetch_report_page(
             client,
             token=login["token"],
-            store_id=100,
+            store_id="100",
             start_date="2026-09-17",
             end_date="2026-09-23",
             finance_category_names=["食材成本"],
@@ -406,3 +425,11 @@ async def test_boh_http_contract_and_zero_code_response():
         )
     assert len(seen) == 3
     assert page["records"] == [{"rawName": "面粉", "receiveNet": 3.14}]
+
+
+@pytest.mark.parametrize("report_code", [401, 500])
+def test_boh_report_rejects_auth_and_business_errors(report_code):
+    response = httpx.Response(200, json={"code": report_code, "data": {}})
+    expected = boh._BohTokenExpired if report_code == 401 else boh.BohQueryError
+    with pytest.raises(expected):
+        boh._upstream_data(response, report=True)

@@ -530,7 +530,7 @@
     "result_too_large": "BOH 返回的数据超过 256 KiB，请缩小日期范围或财务分类后重试。",
     "timeout": "BOH 查询超时，请稍后重试。",
     "unavailable": "BOH 服务暂时不可用，请稍后重试。",
-    "tool_description": "查询当前会话已选门店的 BOH 库存汇总原始数据，单次返回一页，不计算报表。必填 startDate、endDate（YYYY-MM-DD）和 financeCategoryNames（空数组表示全部）；可选 pageIndex，默认 1。固定 dateType=1、pageSize=9999；不能指定其他门店。"
+    "tool_description": "查询当前会话已选门店的 BOH 库存汇总原始数据，单次返回一页，不计算报表。必填 startDate、endDate（YYYY-MM-DD）和 financeCategoryNames（空数组表示全部）；可选 pageIndex，默认 1。固定 dateType=1、pageSize=500；门店 ID 由后端从当前会话注入，不能指定其他门店。"
   },
   "tools": {
     "unknown": "未知工具",

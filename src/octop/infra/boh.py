@@ -35,9 +35,17 @@ _AUTH_CODES = {401, 405, 406}
 _CACHE_SECONDS = 15 * 60
 BOH_CONNECTOR_KIND = "boh"
 TOOL_NAME = "query_store_cos_page"
-_UPSTREAM_PAGE_SIZE = 9999
+_UPSTREAM_PAGE_SIZE = 500
 _MAX_PAGE_INDEX = 50
 _MAX_RESULT_BYTES = 256 * 1024
+
+
+def _boh_store_id(value: Any) -> str | None:
+    if type(value) is int and value > 0:
+        return str(value)
+    if isinstance(value, str) and value.isdecimal() and int(value) > 0:
+        return str(int(value))
+    return None
 
 
 def ensure_boh_connector_for_user(services: Any, user_id: int) -> None:
@@ -126,7 +134,13 @@ def _upstream_data(response: httpx.Response, *, company: bool = False, report: b
         if company:
             raise OctopError(ErrorCode.TOKEN_EXPIRED, "company session expired")
         raise _BohTokenExpired
-    expected = (0, "0") if company or report else (200, "200")
+    expected: tuple[int | str, ...]
+    if company:
+        expected = (0, "0")
+    elif report:
+        expected = (0, "0", 200, "200")
+    else:
+        expected = (200, "200")
     if body.get("code") not in expected:
         raise BohQueryError("BOH_UPSTREAM_ERROR", "boh.unavailable")
     return body.get("data")
@@ -178,7 +192,7 @@ async def fetch_report_page(
     client: httpx.AsyncClient,
     *,
     token: str,
-    store_id: int,
+    store_id: str,
     start_date: str,
     end_date: str,
     finance_category_names: list[str],
@@ -248,14 +262,18 @@ class BohReportService:
             cache = cache if isinstance(cache, dict) else {}
             selected_id = company_store["store_id"]
             cached = cache.get(selected_id)
+            cached_store_id = (
+                _boh_store_id(cached.get("store_id")) if isinstance(cached, dict) else None
+            )
             if (
                 isinstance(cached, dict)
                 and cached.get("expires_at", 0) > time.time()
                 and cached.get("store_no") == company_store["store_no"]
                 and cached.get("store_oa_id") == company_store["store_oa_id"]
                 and cached.get("token")
+                and cached_store_id
             ):
-                return cached
+                return {**cached, "store_id": cached_store_id}
             code = await create_login_code(
                 client,
                 company_token=str(creds["token"]),
@@ -280,11 +298,14 @@ class BohReportService:
                 ),
                 None,
             )
-            if not isinstance(boh_store, dict) or type(boh_store.get("id")) is not int:
+            boh_store_id = (
+                _boh_store_id(boh_store.get("id")) if isinstance(boh_store, dict) else None
+            )
+            if not boh_store_id:
                 raise BohQueryError("BOH_STORE_FORBIDDEN", "boh.store_forbidden")
             session = {
                 "token": login["token"],
-                "store_id": boh_store["id"],
+                "store_id": boh_store_id,
                 "store_no": company_store["store_no"],
                 "store_oa_id": company_store["store_oa_id"],
                 "permission_codes": permissions,
@@ -374,7 +395,7 @@ class BohReportService:
                     data = await fetch_report_page(
                         client,
                         token=str(session["token"]),
-                        store_id=int(session["store_id"]),
+                        store_id=str(session["store_id"]),
                         start_date=start_date,
                         end_date=end_date,
                         finance_category_names=finance_category_names,
@@ -389,7 +410,7 @@ class BohReportService:
                         data = await fetch_report_page(
                             client,
                             token=str(session["token"]),
-                            store_id=int(session["store_id"]),
+                            store_id=str(session["store_id"]),
                             start_date=start_date,
                             end_date=end_date,
                             finance_category_names=finance_category_names,
@@ -407,6 +428,7 @@ class BohReportService:
                 "financeCategoryNames": finance_category_names,
                 "pageIndex": page_index,
                 "pageSize": _UPSTREAM_PAGE_SIZE,
+                "storeId": [str(session["store_id"])],
                 "storeName": company_store["store_name"],
                 "storeNo": company_store["store_no"],
             },
