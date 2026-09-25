@@ -512,6 +512,23 @@
     },
     "preflight_failed_summary": "One or more preflight checks failed"
   },
+  "boh": {
+    "company_login_required": "Please sign in with your Shopkeeper account first.",
+    "company_relogin_required": "Your Shopkeeper session has expired or lacks a WeCom ID. Please sign in again.",
+    "store_required": "Select a store for this conversation first.",
+    "store_forbidden": "Your account cannot access this store's BOH data.",
+    "store_mapping_missing": "This store lacks the information required for BOH login. Contact an administrator.",
+    "report_forbidden": "Your account cannot access the BOH inventory summary report.",
+    "thread_forbidden": "You can only query the store selected in your own conversation.",
+    "invalid_date": "Use YYYY-MM-DD for the date.",
+    "invalid_page": "Page index must be between 1 and 50.",
+    "invalid_category": "Invalid finance category names.",
+    "invalid_date_range": "Start date must not exceed end date, and the range may span at most 62 days.",
+    "result_too_large": "The BOH response exceeds 256 KiB. Narrow the date range or finance categories.",
+    "timeout": "The BOH query timed out. Try again later.",
+    "unavailable": "The BOH service is temporarily unavailable. Try again later.",
+    "tool_description": "Query one page of raw BOH inventory-summary data for the store selected in this conversation; no report calculations. Required: startDate and endDate (YYYY-MM-DD), financeCategoryNames ([] means all). Optional: pageIndex (default 1). dateType=1 and pageSize=9999 are fixed; another store cannot be selected."
+  },
   "tools": {
     "unknown": "Unknown tool",
     "read_file": "Read file",

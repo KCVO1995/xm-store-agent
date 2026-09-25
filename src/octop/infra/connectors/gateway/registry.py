@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from octop.infra.connectors.gateway.adapters import (
     baidu_map,
+    boh,
     ctrip_wendao,
     feishu_cli,
     fliggy,
@@ -45,6 +46,7 @@ _ADAPTERS: dict[str, GatewayAdapter] = {
     "wecom-cli": wecom_cli,
     "weknora": weknora,
     "xm-store": xm_store,
+    "boh": boh,
 }
 
 

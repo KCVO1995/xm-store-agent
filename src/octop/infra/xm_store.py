@@ -84,7 +84,8 @@ def login_account(login_name: str, password: str) -> dict[str, Any]:
     return data
 
 
-def list_authorized_stores(token: str) -> list[dict[str, str]]:
+def list_authorized_stores_with_oa_id(token: str) -> list[dict[str, str]]:
+    """Fetch current company store grants, including server-only BOH mapping fields."""
     try:
         with httpx.Client(timeout=10.0) as client:
             response = client.post(STORES_URL, headers={"token": token, "lang": "zh"}, json={})
@@ -104,9 +105,18 @@ def list_authorized_stores(token: str) -> list[dict[str, str]]:
                 "store_id": str(item["storeId"]),
                 "store_name": str(item.get("storeNameCN") or item.get("storeName") or ""),
                 "store_no": str(item.get("storeNo") or ""),
+                "store_oa_id": str(item.get("storeIdOa") or ""),
             }
         )
     return stores
+
+
+def list_authorized_stores(token: str) -> list[dict[str, str]]:
+    """Return only the fields used by the dashboard and existing MCP tool."""
+    return [
+        {key: item[key] for key in ("store_id", "store_name", "store_no")}
+        for item in list_authorized_stores_with_oa_id(token)
+    ]
 
 
 async def authenticate_company_user(
@@ -161,9 +171,13 @@ async def authenticate_company_user(
         instance_id=instance_id,
         payload={
             "token": str(profile["token"]),
+            "qw_id": str(profile.get("qwId") or ""),
             "internal_token": existing_creds.get("internal_token") or new_internal_token(),
         },
     )
+    from octop.infra.boh import ensure_boh_connector_for_user  # noqa: PLC0415
+
+    ensure_boh_connector_for_user(services, user.id)
     return user
 
 

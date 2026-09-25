@@ -674,6 +674,8 @@ async def create_instance(
     entry = get_catalog_entry(body.kind)
     if entry is None:
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, f"unknown kind {body.kind!r}")
+    if entry.auth_kind == "managed" or body.kind == "xm-store":
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "use company account login")
     if entry.phase != "available":
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, f"{body.kind} not available")
 
@@ -779,6 +781,15 @@ async def patch_instance(
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
+    if inst.kind == "boh" and (
+        body.credentials is not None
+        or body.shared is not None
+        or body.display_name is not None
+        or body.description is not None
+    ):
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "managed BOH connector")
+    if inst.kind == "xm-store" and (body.shared is True or body.credentials is not None):
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "use company account login")
     if is_custom_mcp_kind(inst.kind):
         raise OctopError(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
@@ -888,6 +899,8 @@ async def delete_instance(
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
+    if inst.kind == "boh":
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "managed BOH connector")
     user_id = inst.user_id
     cli_creds: dict[str, Any] | None = None
     if inst.kind in ("feishu-cli", "wecom-cli") and inst.has_credentials:

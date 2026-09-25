@@ -567,6 +567,8 @@ def inject_missing_gateway_tools(
     user_id: int,
     agent_id: str,
     mcp_server_configs: dict[str, Any],
+    repos: Any | None = None,
+    config: OctopConfig | None = None,
 ) -> None:
     """Register gateway tools in-process when HTTP MCP load did not produce them."""
     import logging
@@ -590,16 +592,32 @@ def inject_missing_gateway_tools(
             continue
         if inst.mcp_server_name not in wanted:
             continue
-        if any(str(t).startswith(f"{inst.mcp_server_name}_") for t in tool_set):
+        if inst.kind == "boh":
+            from harness_agent.mcp import sanitize_llm_tool_name
+
+            from octop.infra.boh import TOOL_NAME, build_boh_report_tool
+
+            report_name = sanitize_llm_tool_name(f"{inst.mcp_server_name}_{TOOL_NAME}")
+            if report_name not in tool_set and repos is not None and config is not None:
+                extra.append(
+                    build_boh_report_tool(
+                        mcp_server_name=inst.mcp_server_name,
+                        repos=repos,
+                        config=config,
+                        connector_service=svc,
+                        agent_id=agent_id,
+                    )
+                )
             continue
-        extra.extend(
-            build_gateway_langchain_tools(
-                entry=entry,
-                instance_id=inst.instance_id,
-                mcp_server_name=inst.mcp_server_name,
-                creds=creds,
+        if not any(str(t).startswith(f"{inst.mcp_server_name}_") for t in tool_set):
+            extra.extend(
+                build_gateway_langchain_tools(
+                    entry=entry,
+                    instance_id=inst.instance_id,
+                    mcp_server_name=inst.mcp_server_name,
+                    creds=creds,
+                )
             )
-        )
     if not extra:
         gateway_names = [
             inst.mcp_server_name

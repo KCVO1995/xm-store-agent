@@ -2296,7 +2296,8 @@ export default function ConnectorsPage() {
           <div className={styles.listToolbar}>
             <span className={styles.listToolbarMeta}>
               {t("connectors.listSummary", {
-                total: catalog.length,
+                total: catalog.filter((entry) => entry.auth_kind !== "managed")
+                  .length,
                 configured: configuredCount,
                 defaultValue:
                   "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
@@ -2316,13 +2317,15 @@ export default function ConnectorsPage() {
             </div>
           ) : (
             <div className={styles.typeGrid}>
-              {catalog.map((entry) => (
-                <ConnectorCard
-                  key={entry.kind}
-                  entry={entry}
-                  onConfigure={handleConfigure}
-                />
-              ))}
+              {catalog
+                .filter((entry) => entry.auth_kind !== "managed")
+                .map((entry) => (
+                  <ConnectorCard
+                    key={entry.kind}
+                    entry={entry}
+                    onConfigure={handleConfigure}
+                  />
+                ))}
             </div>
           )}
         </>

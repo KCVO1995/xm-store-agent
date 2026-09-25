@@ -5295,6 +5295,7 @@
     "probeToolsEmpty": "Connection OK, but no tools were found",
     "supportedTools": "Supported tools",
     "clickToManage": "Click to manage",
+    "managedByCompanyLogin": "Available through Shopkeeper sign-in",
     "test": "Test",
     "testOk": "Connection OK",
     "testFailed": "Test failed",
