@@ -74,6 +74,8 @@ _JWT_EXEMPT_EXACT = (
     "/api/health",
     "/api/auth/login",
     "/api/auth/xm-store/login",
+    "/api/auth/xm-store/send-code",
+    "/api/auth/xm-store/login-by-code",
     "/api/auth/captcha",
     "/api/auth/oidc/status",
     "/api/auth/oidc/start",

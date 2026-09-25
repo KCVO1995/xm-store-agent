@@ -16,6 +16,8 @@ from octop.infra.users.preferences import parse_preferences_json
 from octop.infra.utils.ulid import new_ulid
 
 LOGIN_URL = "https://digital.yujianxiaomian.com/meet-digital-manager/sso/v1/login"
+SEND_CODE_URL = "https://digital.yujianxiaomian.com/meet-digital-manager/sso/send/code"
+LOGIN_BY_CODE_URL = "https://digital.yujianxiaomian.com/meet-digital-manager/sso/loginByCode"
 STORES_URL = (
     "https://app-container.yujianxiaomian.com/meet-digital-facade-app-container/"
     "appcontainer/store/queryListByStoreCodeList"
@@ -27,8 +29,8 @@ _PREFERENCE_KEY = "xm_store_last_store_id"
 
 class _RedactLoginUrl(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        if LOGIN_URL in record.getMessage():
-            record.msg = "HTTP Request: company account login [URL redacted]"
+        if any(url in record.getMessage() for url in (LOGIN_URL, SEND_CODE_URL, LOGIN_BY_CODE_URL)):
+            record.msg = "HTTP Request: company authentication [URL redacted]"
             record.args = ()
         return True
 
@@ -84,6 +86,62 @@ def login_account(login_name: str, password: str) -> dict[str, Any]:
     return data
 
 
+def _sms_payload(response: httpx.Response, *, login: bool) -> Any:
+    if response.status_code == 429:
+        raise OctopError(ErrorCode.XM_STORE_SMS_THROTTLED, "company sms throttled")
+    if not login and response.status_code in (401, 403):
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "company sms unavailable", status=502)
+    if response.status_code in (400, 401, 403):
+        code = ErrorCode.XM_STORE_CODE_INVALID if login else ErrorCode.XM_STORE_SMS_SEND_FAILED
+        raise OctopError(code, "company verification rejected")
+    if response.is_error:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "company service unavailable", status=502)
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "invalid company response", status=502) from exc
+    if not isinstance(body, dict):
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "invalid company response", status=502)
+    if body.get("code") not in (0, "0", 200, "200"):
+        message = str(body.get("msg") or body.get("message") or "")
+        if any(hint in message.lower() for hint in ("频繁", "稍后", "间隔", "too many")):
+            raise OctopError(ErrorCode.XM_STORE_SMS_THROTTLED, "company sms throttled")
+        code = ErrorCode.XM_STORE_CODE_INVALID if login else ErrorCode.XM_STORE_SMS_SEND_FAILED
+        raise OctopError(code, "company verification rejected")
+    return body.get("data", body)
+
+
+def send_verification_code(phone_number: str) -> None:
+    """Ask company SSO to send an SMS; the upstream code ID is never returned."""
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                SEND_CODE_URL,
+                params={"phoneNumber": phone_number, "systemType": "XM_STORE_SUITE"},
+            )
+    except httpx.HTTPError:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "company sms unavailable", status=502) from None
+    _sms_payload(response, login=False)
+
+
+def login_by_code(phone_number: str, code: str) -> dict[str, Any]:
+    """Exchange a company SMS code for the same profile shape as password login."""
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                LOGIN_BY_CODE_URL,
+                json={"phoneNumber": phone_number, "code": code, "systemType": "XM_STORE_SUITE"},
+            )
+    except httpx.HTTPError:
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR, "company login unavailable", status=502
+        ) from None
+    data = _sms_payload(response, login=True)
+    if not isinstance(data, dict) or not data.get("token") or not data.get("platformUserId"):
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "incomplete company login response", status=502)
+    return data
+
+
 def list_authorized_stores_with_oa_id(token: str) -> list[dict[str, str]]:
     """Fetch current company store grants, including server-only BOH mapping fields."""
     try:
@@ -123,14 +181,34 @@ async def authenticate_company_user(
     login_name: str, password: str, *, services: Any, user_manager: Any
 ) -> Any:
     """Map a company identity to an ordinary Octop user and rotate its encrypted token."""
+    profile = await asyncio.to_thread(login_account, login_name, password)
+    return await _company_user_from_profile(
+        profile, fallback_name=login_name, services=services, user_manager=user_manager
+    )
+
+
+async def authenticate_company_user_by_code(
+    phone_number: str, code: str, *, services: Any, user_manager: Any
+) -> Any:
+    profile = await asyncio.to_thread(login_by_code, phone_number, code)
+    return await _company_user_from_profile(
+        profile,
+        fallback_name=str(profile.get("loginName") or "公司用户"),
+        services=services,
+        user_manager=user_manager,
+    )
+
+
+async def _company_user_from_profile(
+    profile: dict[str, Any], *, fallback_name: str, services: Any, user_manager: Any
+) -> Any:
     from octop.infra.connectors.service import ConnectorService  # noqa: PLC0415
 
-    profile = await asyncio.to_thread(login_account, login_name, password)
     provider = services.sso_repo.upsert_by_kind(
         CONNECTOR_KIND,
         enabled=False,
         display_name="遇见小面门店账号",
-        issuer="xm-store-password",
+        issuer="xm-store",
         client_id="XM_STORE_SUITE",
         client_secret_enc=None,
         scopes="",
@@ -141,7 +219,7 @@ async def authenticate_company_user(
         subject=str(profile["platformUserId"]),
         claims={
             "preferred_username": f"xm_{profile['platformUserId']}",
-            "name": profile.get("platformUserName") or login_name,
+            "name": profile.get("platformUserName") or fallback_name,
         },
     )
     repo = services.connector_repo
@@ -175,9 +253,15 @@ async def authenticate_company_user(
             "internal_token": existing_creds.get("internal_token") or new_internal_token(),
         },
     )
-    from octop.infra.boh import ensure_boh_connector_for_user  # noqa: PLC0415
+    from octop.infra.boh import BOH_CONNECTOR_KIND, ensure_boh_connector_for_user  # noqa: PLC0415
 
     ensure_boh_connector_for_user(services, user.id)
+    boh = repo.get_by_user_kind(user.id, BOH_CONNECTOR_KIND)
+    if boh is not None and boh.has_credentials:
+        boh_creds = connector_service.decrypt(boh.instance_id)
+        if "boh_sessions" in boh_creds:
+            boh_creds.pop("boh_sessions")
+            connector_service.encrypt_and_store(instance_id=boh.instance_id, payload=boh_creds)
     return user
 
 

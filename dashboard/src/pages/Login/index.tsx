@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Input, Button } from "antd";
+import { Input, Button, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { KeyRound, Lock, User } from "lucide-react";
@@ -71,6 +71,13 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
   const [localLogin, setLocalLogin] = useState(false);
+  const [companyMethod, setCompanyMethod] = useState<"code" | "password">(
+    "code",
+  );
+  const [countryCode, setCountryCode] = useState<"86" | "852" | "65">("86");
+  const [phone, setPhone] = useState("");
+  const [smsCode, setSmsCode] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<OauthProviderStatus[]>([]);
@@ -198,8 +205,29 @@ export default function LoginPage() {
     }
   };
 
+  const phoneValid =
+    countryCode === "86" ? /^1[3-9]\d{9}$/.test(phone) : /^\d{8}$/.test(phone);
+  const canLogin = localLogin
+    ? Boolean(username && password && captchaReady)
+    : companyMethod === "code"
+    ? phoneValid && Boolean(smsCode.trim())
+    : Boolean(username && password);
+
+  const handleSendCode = async () => {
+    if (!phoneValid || sendingCode) return;
+    setSendingCode(true);
+    try {
+      await authApi.sendXmStoreCode(countryCode, phone);
+      message.success(t("login.smsSent"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("login.smsSendFailed"), t));
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const handleLogin = async () => {
-    if (!username || !password || (localLogin && !captchaReady)) return;
+    if (!canLogin) return;
     setLoading(true);
     try {
       const token = localLogin
@@ -207,6 +235,8 @@ export default function LoginPage() {
         : undefined;
       const res = localLogin
         ? await authApi.login(username, password, token)
+        : companyMethod === "code"
+        ? await authApi.loginXmStoreByCode(countryCode, phone, smsCode.trim())
         : await authApi.loginXmStore(username, password);
       setAuthToken(res.access_token);
       await applyUserLocale(res.user.locale);
@@ -214,7 +244,7 @@ export default function LoginPage() {
       navigate("/chat", { replace: true });
     } catch (err) {
       message.error(apiErrorMessage(err, t("login.failed"), t));
-      resetCaptcha();
+      if (localLogin) resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -280,31 +310,110 @@ export default function LoginPage() {
           {t("login.title")}
         </h2>
 
-        <Input
-          prefix={
-            <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
-          }
-          placeholder={
-            localLogin ? t("login.username") : t("login.companyUsername")
-          }
-          size="large"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoFocus
-          style={{ borderRadius: 10 }}
-        />
+        {!localLogin && (
+          <div style={{ display: "flex", width: "100%", gap: 8 }}>
+            <Button
+              type={companyMethod === "code" ? "primary" : "default"}
+              onClick={() => setCompanyMethod("code")}
+              data-testid="login-company-code-toggle"
+            >
+              {t("login.phoneCodeLogin")}
+            </Button>
+            <Button
+              type={companyMethod === "password" ? "primary" : "default"}
+              onClick={() => setCompanyMethod("password")}
+              data-testid="login-company-password-toggle"
+            >
+              {t("login.companyPasswordLogin")}
+            </Button>
+          </div>
+        )}
 
-        <Input.Password
-          prefix={
-            <Lock size={16} style={{ color: "var(--fn-text-quaternary)" }} />
-          }
-          placeholder={t("login.password")}
-          size="large"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onPressEnter={handleLogin}
-          style={{ borderRadius: 10 }}
-        />
+        {!localLogin && companyMethod === "code" ? (
+          <>
+            <div style={{ display: "flex", width: "100%", gap: 8 }}>
+              <Select
+                aria-label={t("login.countryCode")}
+                value={countryCode}
+                onChange={setCountryCode}
+                options={[
+                  { value: "86", label: "+86" },
+                  { value: "852", label: "+852" },
+                  { value: "65", label: "+65" },
+                ]}
+                size="large"
+                style={{ width: 92 }}
+              />
+              <Input
+                data-testid="login-company-phone"
+                placeholder={t("login.phoneNumber")}
+                aria-label={t("login.phoneNumber")}
+                size="large"
+                inputMode="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.trim())}
+                autoFocus
+                style={{ borderRadius: 10 }}
+              />
+            </div>
+            <div style={{ display: "flex", width: "100%", gap: 8 }}>
+              <Input
+                data-testid="login-company-sms-code"
+                placeholder={t("login.smsCode")}
+                aria-label={t("login.smsCode")}
+                size="large"
+                inputMode="numeric"
+                maxLength={16}
+                value={smsCode}
+                onChange={(e) => setSmsCode(e.target.value)}
+                onPressEnter={handleLogin}
+                style={{ borderRadius: 10 }}
+              />
+              <Button
+                data-testid="login-company-send-code"
+                size="large"
+                loading={sendingCode}
+                disabled={!phoneValid || sendingCode}
+                onClick={() => void handleSendCode()}
+              >
+                {t("login.sendSmsCode")}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <Input
+              prefix={
+                <User
+                  size={16}
+                  style={{ color: "var(--fn-text-quaternary)" }}
+                />
+              }
+              placeholder={
+                localLogin ? t("login.username") : t("login.companyUsername")
+              }
+              size="large"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              style={{ borderRadius: 10 }}
+            />
+            <Input.Password
+              prefix={
+                <Lock
+                  size={16}
+                  style={{ color: "var(--fn-text-quaternary)" }}
+                />
+              }
+              placeholder={t("login.password")}
+              size="large"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onPressEnter={handleLogin}
+              style={{ borderRadius: 10 }}
+            />
+          </>
+        )}
 
         {localLogin && (
           <CaptchaField
@@ -319,12 +428,13 @@ export default function LoginPage() {
         )}
 
         <Button
+          data-testid="login-submit"
           type="primary"
           size="large"
           block
           loading={loading}
           onClick={handleLogin}
-          disabled={!username || !password || (localLogin && !captchaReady)}
+          disabled={!canLogin}
           style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
         >
           {t("login.submit")}
