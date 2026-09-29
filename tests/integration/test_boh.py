@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -17,6 +17,11 @@ from octop.infra.connectors.gateway.registry import mcp_tools_for_kind
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.boh_managed import PACKAGE_NAME, mount_existing_store_assistants
+from octop.infra.xm_access import (
+    XmAccessError,
+    authorized_store_for_thread,
+    company_credentials,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -85,6 +90,91 @@ def _stores(token):
         }
         for index in (1, 2)
     ]
+
+
+@pytest.mark.asyncio
+async def test_xm_access_uses_current_user_session_and_store_grants(
+    env_with_main_agent, monkeypatch
+):
+    client, server, _admin_auth, agent_id = env_with_main_agent
+    alice, _ = await _login(client, monkeypatch, "alice")
+    bob, _ = await _login(client, monkeypatch, "bob")
+    repos = server.services.repos
+    _thread(server, user_id=alice, agent_id=agent_id, name="alice-xm", store_id="alice-store-1")
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
+
+    alice_creds = company_credentials(repos, alice)
+    bob_creds = company_credentials(repos, bob)
+    assert alice_creds is not None and alice_creds[1]["token"] == "company-alice"
+    assert bob_creds is not None and bob_creds[1]["token"] == "company-bob"
+    assert company_credentials(repos, -1) is None
+    repos.connector_repo.update_status(alice_creds[0], "inactive")
+    assert company_credentials(repos, alice) is None
+    with pytest.raises(XmAccessError, match="COMPANY_LOGIN_REQUIRED"):
+        await authorized_store_for_thread(
+            repos, user_id=alice, agent_id=agent_id, thread_id="alice-xm"
+        )
+    repos.connector_repo.update_status(alice_creds[0], "active")
+    thread, store = await authorized_store_for_thread(
+        repos,
+        user_id=alice,
+        agent_id=agent_id,
+        thread_id="alice-xm",
+    )
+    assert thread.xm_store_id == store["store_id"] == "alice-store-1"
+    assert "token" not in store
+
+    for user_id, checked_agent in ((bob, agent_id), (alice, "different-agent")):
+        with pytest.raises(XmAccessError, match="THREAD_FORBIDDEN"):
+            await authorized_store_for_thread(
+                repos,
+                user_id=user_id,
+                agent_id=checked_agent,
+                thread_id="alice-xm",
+            )
+
+    repos.thread_repo.set_xm_store_id("alice-xm", "")
+    with pytest.raises(XmAccessError, match="STORE_REQUIRED"):
+        await authorized_store_for_thread(
+            repos,
+            user_id=alice,
+            agent_id=agent_id,
+            thread_id="alice-xm",
+        )
+    repos.thread_repo.set_xm_store_id("alice-xm", "bob-store-1")
+    with pytest.raises(XmAccessError, match="STORE_FORBIDDEN"):
+        await authorized_store_for_thread(
+            repos,
+            user_id=alice,
+            agent_id=agent_id,
+            thread_id="alice-xm",
+        )
+    repos.thread_repo.set_xm_store_id("alice-xm", "alice-store-1")
+    monkeypatch.setattr(
+        xm_store,
+        "list_authorized_stores_with_oa_id",
+        lambda _token: (_ for _ in ()).throw(OctopError(ErrorCode.TOKEN_EXPIRED, "expired")),
+    )
+    with pytest.raises(OctopError) as expired:
+        await authorized_store_for_thread(
+            repos,
+            user_id=alice,
+            agent_id=agent_id,
+            thread_id="alice-xm",
+        )
+    assert expired.value.code == ErrorCode.TOKEN_EXPIRED
+    monkeypatch.setattr(
+        xm_store,
+        "list_authorized_stores_with_oa_id",
+        lambda _token: (_ for _ in ()).throw(
+            OctopError(ErrorCode.INTERNAL_ERROR, "company service unavailable", status=502)
+        ),
+    )
+    with pytest.raises(OctopError) as unavailable:
+        await authorized_store_for_thread(
+            repos, user_id=alice, agent_id=agent_id, thread_id="alice-xm"
+        )
+    assert unavailable.value.code == ErrorCode.INTERNAL_ERROR
 
 
 def _stub_boh_login(monkeypatch, *, permission=True, string_store_id=False, permissions=None):
@@ -186,6 +276,96 @@ async def test_boh_new_report_request_contract(kind, expected_extra):
         assert data["headers"][0]["key"] == "week_1"
 
 
+@pytest.mark.parametrize(
+    ("kind", "expected_extra"),
+    [
+        (
+            "cos",
+            {
+                "dateType": 1,
+                "financeCategoryNames": ["食材成本"],
+                "bzywlflSonNames": None,
+                "orderingCategoryList": [],
+            },
+        ),
+        (
+            "generic",
+            {"dateType": 1, "financeCategoryNames": ["食材成本"], "bzywlflSonNames": None},
+        ),
+        ("assessment_week", {"count": True, "login": True, "isShowSpecialColumn": True}),
+        (
+            "generic_week",
+            {
+                "count": True,
+                "login": True,
+                "isShowSpecialColumn": True,
+                "bzywlflSonNames": None,
+                "excludeCondiment": True,
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_boh_official_export_request_uses_app_path_without_pagination(kind, expected_extra):
+    def handle(request):
+        assert str(request.url) == boh.REPORT_SPECS[kind]["export_url"]
+        assert request.headers["token"] == "boh-secret"
+        assert request.headers["ClientType"] == "admin"
+        assert json.loads(request.content) == {
+            "startDate": "2026-09-01",
+            "endDate": "2026-09-23",
+            "storeId": ["4764"],
+            "isMatchRaw": 0,
+            **expected_extra,
+        }
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            content=b"PK\x03\x04official-excel",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        content = await boh.fetch_boh_export(
+            client,
+            kind=kind,
+            token="boh-secret",
+            store_id="4764",
+            start_date="2026-09-01",
+            end_date="2026-09-23",
+            finance_category_names=["食材成本"] if kind in {"cos", "generic"} else None,
+        )
+    assert content == b"PK\x03\x04official-excel"
+
+
+@pytest.mark.asyncio
+async def test_boh_official_export_rejects_json_and_oversized_file(monkeypatch):
+    def handle(request):
+        return httpx.Response(200, json={"code": 401, "msg": "expired"})
+
+    kwargs = {
+        "kind": "cos",
+        "token": "boh-secret",
+        "store_id": "4764",
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-23",
+        "finance_category_names": ["食材成本"],
+    }
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        with pytest.raises(boh._BohTokenExpired):
+            await boh.fetch_boh_export(client, **kwargs)
+
+    monkeypatch.setattr(boh, "_MAX_EXPORT_BYTES", 5)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, content=b"PK\x03\x04too-big")
+        )
+    ) as client:
+        with pytest.raises(boh.BohQueryError, match="BOH_EXPORT_TOO_LARGE"):
+            await boh.fetch_boh_export(client, **kwargs)
+
+
 @pytest.mark.asyncio
 async def test_boh_managed_connector_is_created_and_cannot_be_shared_or_edited(
     env_with_main_agent, monkeypatch
@@ -277,7 +457,7 @@ async def test_boh_raw_page_is_scoped_cached_and_separate_mcp_tool(
     bob, _ = await _login(client, monkeypatch, "bob")
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-boh", store_id="alice-store-1")
     _thread(server, user_id=bob, agent_id=agent_id, name="bob-boh", store_id="bob-store-1")
-    monkeypatch.setattr(boh, "list_authorized_stores_with_oa_id", _stores)
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
     codes = _stub_boh_login(monkeypatch, string_store_id=string_store_id)
     calls = []
     raw = {
@@ -305,6 +485,8 @@ async def test_boh_raw_page_is_scoped_cached_and_separate_mcp_tool(
     }
     result = await service.query(**params)
     assert result["data"] == raw
+    assert "company-alice" not in json.dumps(result)
+    assert "boh-oa-alice-1" not in json.dumps(result)
     assert result["query"]["storeId"] == ["100"]
     assert result["query"]["pageSize"] == 500
     assert (await service.query(**params))["data"] == raw
@@ -352,6 +534,7 @@ async def test_boh_raw_page_is_scoped_cached_and_separate_mcp_tool(
     assert any(name.endswith("_query_store_generic_week_page") for name in names)
     assert any(name.endswith("_search_raw_items") for name in names)
     assert any(name.endswith("_analyze_boh_variance") for name in names)
+    assert any(name.endswith("_export_boh_excel") for name in names)
     assert not any("query_food_cost_inventory" in name for name in names)
 
 
@@ -362,7 +545,7 @@ async def test_boh_tool_schema_runtime_identity_and_input_validation(
     client, server, _admin_auth, agent_id = env_with_main_agent
     alice, _ = await _login(client, monkeypatch, "alice")
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-boh", store_id="alice-store-1")
-    monkeypatch.setattr(boh, "list_authorized_stores_with_oa_id", _stores)
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
     _stub_boh_login(monkeypatch)
 
     async def report(_client, **_kwargs):
@@ -370,6 +553,16 @@ async def test_boh_tool_schema_runtime_identity_and_input_validation(
 
     monkeypatch.setattr(boh, "fetch_report_page", report)
     definition = mcp_tools_for_kind("boh")[0]
+    for tool_definition in mcp_tools_for_kind("boh"):
+        assert not set(tool_definition["inputSchema"]["properties"]) & {
+            "userId",
+            "agentId",
+            "threadId",
+            "storeId",
+            "token",
+            "systemType",
+            "url",
+        }
     schema = definition["inputSchema"]
     assert set(schema["required"]) == {"startDate", "endDate"}
     assert set(schema["properties"]) == {
@@ -480,7 +673,7 @@ async def test_boh_expiration_permission_and_large_result(env_with_main_agent, m
     client, server, _admin_auth, agent_id = env_with_main_agent
     alice, _ = await _login(client, monkeypatch, "alice")
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-boh", store_id="alice-store-1")
-    monkeypatch.setattr(boh, "list_authorized_stores_with_oa_id", _stores)
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
     _stub_boh_login(monkeypatch, permission=False)
     service = _service(server)
     args = {
@@ -530,13 +723,104 @@ async def test_boh_expiration_permission_and_large_result(env_with_main_agent, m
         server.services.secret_repo, refreshed.credential_blob
     )
     monkeypatch.setattr(
-        boh,
+        xm_store,
         "list_authorized_stores_with_oa_id",
         lambda _token: (_ for _ in ()).throw(OctopError(ErrorCode.TOKEN_EXPIRED, "expired")),
     )
     with pytest.raises(OctopError) as expired:
         await service.query(**args)
     assert expired.value.code == ErrorCode.TOKEN_EXPIRED
+
+
+@pytest.mark.asyncio
+async def test_boh_official_export_rechecks_store_permission_and_relogs_once(
+    env_with_main_agent, monkeypatch
+):
+    client, server, _admin_auth, agent_id = env_with_main_agent
+    alice, _ = await _login(client, monkeypatch, "alice")
+    bob, _ = await _login(client, monkeypatch, "bob")
+    _thread(server, user_id=alice, agent_id=agent_id, name="alice-export", store_id="alice-store-1")
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
+    codes = _stub_boh_login(monkeypatch)
+    calls = []
+
+    async def export(_client, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 2:
+            raise boh._BohTokenExpired
+        return b"PK\x03\x04excel"
+
+    monkeypatch.setattr(boh, "fetch_boh_export", export)
+    service = _service(server)
+    args = {
+        "user_id": alice,
+        "agent_id": agent_id,
+        "thread_id": "alice-export",
+        "report_kind": "cos",
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-23",
+    }
+    assert await service.export_official(**args) == (b"PK\x03\x04excel", "alice 门店 1")
+    assert calls[-1]["store_id"] == "100"
+    assert calls[-1]["finance_category_names"] == ["食材成本"]
+    assert await service.export_official(**args) == (b"PK\x03\x04excel", "alice 门店 1")
+    assert len(codes) == 2  # Expired BOH token was exchanged once, then retried.
+    with pytest.raises(boh.BohQueryError, match="THREAD_FORBIDDEN"):
+        await service.export_official(**{**args, "user_id": bob})
+    with pytest.raises(boh.BohQueryError, match="BOH_REPORT_FORBIDDEN"):
+        await service.export_official(**{**args, "report_kind": "generic"})
+    server.services.thread_repo.set_xm_store_id("alice-export", "bob-store-1")
+    with pytest.raises(boh.BohQueryError, match="STORE_FORBIDDEN"):
+        await service.export_official(**args)
+
+
+@pytest.mark.asyncio
+async def test_boh_official_export_tool_attaches_file_to_current_thread(
+    env_with_main_agent, monkeypatch
+):
+    client, server, _admin_auth, agent_id = env_with_main_agent
+    alice, _ = await _login(client, monkeypatch, "alice")
+    _thread(server, user_id=alice, agent_id=agent_id, name="alice-export", store_id="alice-store-1")
+    monkeypatch.setattr(
+        boh,
+        "get_config",
+        lambda: {"configurable": {"user": str(alice), "thread_id": "alice-export"}},
+    )
+
+    async def fake_export(_self, **kwargs):
+        assert kwargs["user_id"] == alice
+        assert kwargs["thread_id"] == "alice-export"
+        assert kwargs["report_kind"] == "cos"
+        return b"PK\x03\x04excel", "alice 门店 1"
+
+    monkeypatch.setattr(boh.BohReportService, "export_official", fake_export)
+    workspace = MagicMock()
+    workspace.aupload_bytes = AsyncMock()
+    tools = boh.build_boh_report_tools(
+        mcp_server_name="boh__test",
+        repos=server.services.repos,
+        config=server.services.config,
+        connector_service=_service(server)._connectors,
+        agent_id=agent_id,
+        workspace=workspace,
+    )
+    tool = next(item for item in tools if item.name.endswith("_export_boh_excel"))
+    assert not set(tool.args_schema.model_fields) & {
+        "userId",
+        "storeId",
+        "token",
+        "systemType",
+        "url",
+    }
+    result = json.loads(
+        await tool.ainvoke(
+            {"reportKind": "cos", "startDate": "2026-09-01", "endDate": "2026-09-23"}
+        )
+    )
+    assert result["status"] == "ok"
+    assert result["path"].startswith("outbound/boh/")
+    workspace.aupload_bytes.assert_awaited_once_with(result["path"], b"PK\x03\x04excel")
+    assert result["path"] in server.services.thread_repo.get("alice-export").artifacts
 
 
 @pytest.mark.asyncio
@@ -549,7 +833,7 @@ async def test_boh_snapshot_requires_complete_pages_and_same_conversation(
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-boh", store_id="alice-store-1")
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-other", store_id="alice-store-1")
     _thread(server, user_id=bob, agent_id=agent_id, name="bob-boh", store_id="bob-store-1")
-    monkeypatch.setattr(boh, "list_authorized_stores_with_oa_id", _stores)
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
     _stub_boh_login(monkeypatch)
 
     async def report(_client, **kwargs):
@@ -606,7 +890,7 @@ async def test_boh_material_search_and_daily_analysis(env_with_main_agent, monke
     client, server, _admin_auth, agent_id = env_with_main_agent
     alice, _ = await _login(client, monkeypatch, "alice")
     _thread(server, user_id=alice, agent_id=agent_id, name="alice-boh", store_id="alice-store-1")
-    monkeypatch.setattr(boh, "list_authorized_stores_with_oa_id", _stores)
+    monkeypatch.setattr(xm_store, "list_authorized_stores_with_oa_id", _stores)
     _stub_boh_login(monkeypatch)
 
     def handle(request):

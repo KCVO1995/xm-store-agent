@@ -2104,6 +2104,8 @@ function ConnectorConfigDrawer({
 
 type ConnectorTab = "enabled" | "builtin" | "custom";
 
+const VISIBLE_BUILTIN_CONNECTOR_KINDS = new Set(["boh", "xm-store"]);
+
 const CONNECTOR_TABS: TabBarItem<ConnectorTab>[] = [
   { key: "enabled", labelKey: "connectors.tabEnabled", icon: Link2 },
   { key: "builtin", labelKey: "connectors.tabBuiltin", icon: Blocks },
@@ -2123,10 +2125,23 @@ export default function ConnectorsPage() {
     string | null
   >(null);
   const { catalog, instances, loading, refresh } = useConnectorInstances();
+  const visibleBuiltinCatalog = useMemo(
+    () =>
+      catalog.filter(
+        (entry) =>
+          VISIBLE_BUILTIN_CONNECTOR_KINDS.has(entry.kind) &&
+          entry.auth_kind !== "managed",
+      ),
+    [catalog],
+  );
 
   const configuredCount = useMemo(() => {
-    return instances.filter((instance) => instance.has_credentials).length;
-  }, [instances]);
+    return instances.filter(
+      (instance) =>
+        instance.has_credentials &&
+        visibleBuiltinCatalog.some((entry) => entry.kind === instance.kind),
+    ).length;
+  }, [instances, visibleBuiltinCatalog]);
 
   useEffect(() => {
     const oauthState = searchParams.get("oauth_state");
@@ -2296,8 +2311,7 @@ export default function ConnectorsPage() {
           <div className={styles.listToolbar}>
             <span className={styles.listToolbarMeta}>
               {t("connectors.listSummary", {
-                total: catalog.filter((entry) => entry.auth_kind !== "managed")
-                  .length,
+                total: visibleBuiltinCatalog.length,
                 configured: configuredCount,
                 defaultValue:
                   "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
@@ -2317,15 +2331,13 @@ export default function ConnectorsPage() {
             </div>
           ) : (
             <div className={styles.typeGrid}>
-              {catalog
-                .filter((entry) => entry.auth_kind !== "managed")
-                .map((entry) => (
-                  <ConnectorCard
-                    key={entry.kind}
-                    entry={entry}
-                    onConfigure={handleConfigure}
-                  />
-                ))}
+              {visibleBuiltinCatalog.map((entry) => (
+                <ConnectorCard
+                  key={entry.kind}
+                  entry={entry}
+                  onConfigure={handleConfigure}
+                />
+              ))}
             </div>
           )}
         </>

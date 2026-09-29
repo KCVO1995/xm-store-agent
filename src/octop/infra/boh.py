@@ -20,7 +20,13 @@ from octop.infra.connectors.builder import mcp_server_name
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_ulid
-from octop.infra.xm_store import CONNECTOR_KIND, list_authorized_stores_with_oa_id
+from octop.infra.xm_access import (
+    XmAccessError,
+    agent_thread,
+    authorized_store_for_thread,
+    company_credentials,
+)
+from octop.infra.xm_store import CONNECTOR_KIND
 
 if TYPE_CHECKING:
     from octop.config import OctopConfig
@@ -38,21 +44,25 @@ REPORT_PERMISSION = "report:inventorySummaryReport"
 REPORT_SPECS: dict[str, dict[str, Any]] = {
     "cos": {
         "url": BOH_REPORT_URL,
+        "export_url": "https://boh-manage.yujianxiaomian.com/boh-back/facade/cos-report/store/cos/export",
         "permission": REPORT_PERMISSION,
         "page_size": 500,
     },
     "generic": {
         "url": "https://boh-manage.yujianxiaomian.com/boh-back/cos-report/store/cos/genericRawItem/pageList",
+        "export_url": "https://boh-manage.yujianxiaomian.com/boh-back/facade/cos-report/store/cos/genericRawItem/export",
         "permission": "report:standardRawMaterialVariance",
         "page_size": 100,
     },
     "assessment_week": {
         "url": "https://boh-manage.yujianxiaomian.com/boh-back/cos-report/store/cos/assessmentItem/week/pageList",
+        "export_url": "https://boh-manage.yujianxiaomian.com/boh-back/facade/cos-report/store/cos/assessmentItem/week/export",
         "permission": "report:assessmentItemVarianceWeek",
         "page_size": 50,
     },
     "generic_week": {
         "url": "https://boh-manage.yujianxiaomian.com/boh-back/cos-report/store/cos/genericRawItem/week/pageList",
+        "export_url": "https://boh-manage.yujianxiaomian.com/boh-back/facade/cos-report/store/cos/genericRawItem/week/export",
         "permission": "report:standardRawMaterialVarianceWeek",
         "page_size": 50,
     },
@@ -66,6 +76,7 @@ _UPSTREAM_PAGE_SIZE = 500
 _MAX_PAGE_INDEX = 50
 _MAX_RESULT_BYTES = 256 * 1024
 _MAX_RAW_ITEM_IDS = 50
+_MAX_EXPORT_BYTES = 20 * 1024 * 1024
 
 
 def _boh_store_id(value: Any) -> str | None:
@@ -262,28 +273,15 @@ async def fetch_boh_page(
     page_size: int,
     raw_item_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "startDate": start_date,
-        "endDate": end_date,
-        "pageIndex": page_index,
-        "pageSize": page_size,
-        "storeId": [store_id],
-        "isMatchRaw": 0,
-    }
-    if kind in {"cos", "generic"}:
-        body.update(
-            dateType=1,
-            financeCategoryNames=finance_category_names,
-            bzywlflSonNames=None,
-        )
-        if kind == "cos":
-            body["orderingCategoryList"] = []
-            if raw_item_ids is not None:
-                body["riIds"] = raw_item_ids
-    else:
-        body.update(count=True, login=True, isShowSpecialColumn=True)
-        if kind == "generic_week":
-            body.update(bzywlflSonNames=None, excludeCondiment=True)
+    body = _report_request_body(
+        kind=kind,
+        store_id=store_id,
+        start_date=start_date,
+        end_date=end_date,
+        finance_category_names=finance_category_names,
+        raw_item_ids=raw_item_ids,
+    )
+    body.update(pageIndex=page_index, pageSize=page_size)
     try:
         response = await client.post(
             str(REPORT_SPECS[kind]["url"]),
@@ -309,6 +307,91 @@ async def fetch_boh_page(
     return data
 
 
+def _report_request_body(
+    *,
+    kind: str,
+    store_id: str,
+    start_date: str,
+    end_date: str,
+    finance_category_names: list[str] | None,
+    raw_item_ids: list[int] | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "startDate": start_date,
+        "endDate": end_date,
+        "storeId": [store_id],
+        "isMatchRaw": 0,
+    }
+    if kind in {"cos", "generic"}:
+        body.update(
+            dateType=1,
+            financeCategoryNames=finance_category_names,
+            bzywlflSonNames=None,
+        )
+        if kind == "cos":
+            body["orderingCategoryList"] = []
+            if raw_item_ids is not None:
+                body["riIds"] = raw_item_ids
+    else:
+        body.update(count=True, login=True, isShowSpecialColumn=True)
+        if kind == "generic_week":
+            body.update(bzywlflSonNames=None, excludeCondiment=True)
+    return body
+
+
+async def fetch_boh_export(
+    client: httpx.AsyncClient,
+    *,
+    kind: str,
+    token: str,
+    store_id: str,
+    start_date: str,
+    end_date: str,
+    finance_category_names: list[str] | None,
+) -> bytes:
+    body = _report_request_body(
+        kind=kind,
+        store_id=store_id,
+        start_date=start_date,
+        end_date=end_date,
+        finance_category_names=finance_category_names,
+    )
+    try:
+        async with client.stream(
+            "POST",
+            str(REPORT_SPECS[kind]["export_url"]),
+            headers={
+                "token": token,
+                "ClientType": "admin",
+                "systemType": "XM_STORE_SUITE",
+                "Terminal-Type": "BOH_APP",
+                "lang": "zh",
+            },
+            json=body,
+        ) as response:
+            if response.status_code in _AUTH_CODES:
+                raise _BohTokenExpired
+            if response.is_error:
+                raise BohQueryError("BOH_UNAVAILABLE", "boh.unavailable")
+            if "json" in response.headers.get("content-type", "").lower():
+                await response.aread()
+                _upstream_data(response, report=True)
+                raise BohQueryError("BOH_BAD_RESPONSE", "boh.unavailable")
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > _MAX_EXPORT_BYTES:
+                    raise BohQueryError("BOH_EXPORT_TOO_LARGE", "boh.export_too_large")
+                chunks.append(chunk)
+    except httpx.HTTPError as exc:
+        raise BohQueryError("BOH_UNAVAILABLE", "boh.unavailable") from exc
+    content = b"".join(chunks)
+    if not content.startswith(b"PK\x03\x04"):
+        raise BohQueryError("BOH_BAD_RESPONSE", "boh.unavailable")
+    return content
+
+
 class BohReportService:
     def __init__(
         self, *, repos: RepoBundle, config: OctopConfig, connector_service: ConnectorService
@@ -319,15 +402,40 @@ class BohReportService:
         self._locks: dict[int, asyncio.Lock] = {}
 
     def _credentials(self, user_id: int) -> tuple[str, dict[str, Any]]:
-        inst = self._repos.connector_repo.get_by_user_kind(user_id, CONNECTOR_KIND)
-        if inst is None or inst.status != "active" or not inst.credential_blob:
+        stored = company_credentials(self._repos, user_id)
+        if stored is None:
             raise BohQueryError("COMPANY_LOGIN_REQUIRED", "boh.company_login_required")
-        creds = decrypt_credentials(self._repos.secret_repo, inst.credential_blob)
-        if not creds.get("token"):
-            raise BohQueryError("COMPANY_LOGIN_REQUIRED", "boh.company_login_required")
+        instance_id, creds = stored
         if not creds.get("qw_id"):
             raise BohQueryError("COMPANY_RELOGIN_REQUIRED", "boh.company_relogin_required")
-        return inst.instance_id, creds
+        return instance_id, creds
+
+    def _thread(self, user_id: int, agent_id: str, thread_id: str, *, missing: str) -> Any:
+        try:
+            thread = agent_thread(
+                self._repos, user_id=user_id, agent_id=agent_id, thread_id=thread_id
+            )
+        except XmAccessError as exc:
+            raise BohQueryError("THREAD_FORBIDDEN", "boh.thread_forbidden") from exc
+        if not thread.xm_store_id:
+            raise BohQueryError(missing, f"boh.{missing.lower()}")
+        return thread
+
+    async def _company_store(
+        self, *, user_id: int, agent_id: str, thread_id: str
+    ) -> dict[str, str]:
+        try:
+            _thread, store = await authorized_store_for_thread(
+                self._repos,
+                user_id=user_id,
+                agent_id=agent_id,
+                thread_id=thread_id,
+            )
+        except XmAccessError as exc:
+            code = exc.code
+            key = "boh.thread_forbidden" if code == "THREAD_FORBIDDEN" else f"boh.{code.lower()}"
+            raise BohQueryError(code, key) from exc
+        return store
 
     async def _session(
         self, *, user_id: int, company_store: dict[str, str], client: httpx.AsyncClient
@@ -413,25 +521,95 @@ class BohReportService:
             creds["boh_sessions"] = cache
             self._connectors.encrypt_and_store(instance_id=instance_id, payload=creds)
 
+    async def export_official(
+        self,
+        *,
+        user_id: int,
+        agent_id: str,
+        thread_id: str,
+        report_kind: str,
+        start_date: str,
+        end_date: str,
+        finance_category_names: list[str] | None = None,
+    ) -> tuple[bytes, str]:
+        if report_kind not in REPORT_SPECS:
+            raise BohQueryError("INVALID_REPORT", "boh.unavailable")
+        try:
+            start = date_type.fromisoformat(start_date)
+            end = date_type.fromisoformat(end_date)
+            if start.isoformat() != start_date or end.isoformat() != end_date:
+                raise ValueError
+        except (ValueError, TypeError) as exc:
+            raise BohQueryError("INVALID_DATE", "boh.invalid_date") from exc
+        if start > end or (end - start).days > 62:
+            raise BohQueryError("INVALID_DATE_RANGE", "boh.invalid_date_range")
+        categories = finance_category_names
+        if report_kind in {"cos", "generic"}:
+            categories = ["食材成本"] if categories is None else categories
+            if (
+                not isinstance(categories, list)
+                or len(categories) > 20
+                or any(
+                    not isinstance(item, str) or not item.strip() or len(item) > 80
+                    for item in categories
+                )
+            ):
+                raise BohQueryError("INVALID_CATEGORY", "boh.invalid_category")
+        elif categories:
+            raise BohQueryError("INVALID_CATEGORY", "boh.invalid_category")
+        self._thread(user_id, agent_id, thread_id, missing="STORE_REQUIRED")
+        self._credentials(user_id)
+        company_store = await self._company_store(
+            user_id=user_id, agent_id=agent_id, thread_id=thread_id
+        )
+        if not company_store["store_oa_id"] or not company_store["store_no"]:
+            raise BohQueryError("STORE_MAPPING_MISSING", "boh.store_mapping_missing")
+        try:
+            async with asyncio.timeout(90), httpx.AsyncClient(timeout=60.0) as client:
+                session = await self._session(
+                    user_id=user_id, company_store=company_store, client=client
+                )
+                if REPORT_SPECS[report_kind]["permission"] not in session["permission_codes"]:
+                    raise BohQueryError("BOH_REPORT_FORBIDDEN", "boh.report_forbidden")
+
+                async def request() -> bytes:
+                    return await fetch_boh_export(
+                        client,
+                        kind=report_kind,
+                        token=str(session["token"]),
+                        store_id=str(session["store_id"]),
+                        start_date=start_date,
+                        end_date=end_date,
+                        finance_category_names=categories,
+                    )
+
+                try:
+                    content = await request()
+                except _BohTokenExpired as exc:
+                    await self._invalidate(user_id, company_store["store_id"], session["token"])
+                    session = await self._session(
+                        user_id=user_id, company_store=company_store, client=client
+                    )
+                    if REPORT_SPECS[report_kind]["permission"] not in session["permission_codes"]:
+                        raise BohQueryError("BOH_REPORT_FORBIDDEN", "boh.report_forbidden") from exc
+                    try:
+                        content = await request()
+                    except _BohTokenExpired as retry_exc:
+                        raise BohQueryError("BOH_LOGIN_FAILED", "boh.unavailable") from retry_exc
+        except TimeoutError as exc:
+            raise BohQueryError("BOH_TIMEOUT", "boh.timeout") from exc
+        return content, company_store["store_name"]
+
     async def search_materials(
         self, *, user_id: int, thread_id: str, agent_id: str, keyword: str
     ) -> dict[str, Any]:
         if not isinstance(keyword, str) or not 1 <= len(keyword.strip()) <= 80:
             raise BohQueryError("INVALID_MATERIAL", "boh.invalid_material")
-        thread = self._repos.thread_repo.get(thread_id)
-        if (
-            thread is None
-            or thread.user_id != user_id
-            or thread.agent_id != agent_id
-            or thread.channel_type != "dashboard"
-            or not thread.xm_store_id
-        ):
-            raise BohQueryError("THREAD_FORBIDDEN", "boh.thread_forbidden")
-        _instance_id, creds = self._credentials(user_id)
-        stores = await asyncio.to_thread(list_authorized_stores_with_oa_id, str(creds["token"]))
-        company_store = next((x for x in stores if x["store_id"] == thread.xm_store_id), None)
-        if company_store is None:
-            raise BohQueryError("STORE_FORBIDDEN", "boh.store_forbidden")
+        self._thread(user_id, agent_id, thread_id, missing="THREAD_FORBIDDEN")
+        self._credentials(user_id)
+        company_store = await self._company_store(
+            user_id=user_id, agent_id=agent_id, thread_id=thread_id
+        )
         async with httpx.AsyncClient(timeout=15.0) as client:
             session = await self._session(
                 user_id=user_id, company_store=company_store, client=client
@@ -576,20 +754,11 @@ class BohReportService:
             or len(set(dataset_ids)) != len(dataset_ids)
         ):
             raise BohQueryError("INVALID_DATASET", "boh.unavailable")
-        thread = self._repos.thread_repo.get(thread_id)
-        if (
-            thread is None
-            or thread.user_id != user_id
-            or thread.agent_id != agent_id
-            or thread.channel_type != "dashboard"
-            or not thread.xm_store_id
-        ):
-            raise BohQueryError("THREAD_FORBIDDEN", "boh.thread_forbidden")
-        _instance_id, creds = self._credentials(user_id)
-        stores = await asyncio.to_thread(list_authorized_stores_with_oa_id, str(creds["token"]))
-        company_store = next((x for x in stores if x["store_id"] == thread.xm_store_id), None)
-        if company_store is None:
-            raise BohQueryError("STORE_FORBIDDEN", "boh.store_forbidden")
+        thread = self._thread(user_id, agent_id, thread_id, missing="THREAD_FORBIDDEN")
+        self._credentials(user_id)
+        company_store = await self._company_store(
+            user_id=user_id, agent_id=agent_id, thread_id=thread_id
+        )
         async with httpx.AsyncClient(timeout=10.0) as client:
             session = await self._session(
                 user_id=user_id, company_store=company_store, client=client
@@ -738,16 +907,7 @@ class BohReportService:
             raise BohQueryError("INVALID_MATERIAL", "boh.invalid_material")
         if report_kind.endswith("_week") and finance_category_names:
             raise BohQueryError("INVALID_CATEGORY", "boh.invalid_category")
-        thread = self._repos.thread_repo.get(thread_id)
-        if (
-            thread is None
-            or thread.user_id != user_id
-            or thread.agent_id != agent_id
-            or thread.channel_type != "dashboard"
-        ):
-            raise BohQueryError("THREAD_FORBIDDEN", "boh.thread_forbidden")
-        if not thread.xm_store_id:
-            raise BohQueryError("STORE_REQUIRED", "boh.store_required")
+        thread = self._thread(user_id, agent_id, thread_id, missing="STORE_REQUIRED")
         if type(page_index) is not int or not 1 <= page_index <= _MAX_PAGE_INDEX:
             raise BohQueryError("INVALID_PAGE", "boh.invalid_page")
         if (
@@ -768,13 +928,10 @@ class BohReportService:
             raise BohQueryError("INVALID_DATE", "boh.invalid_date") from exc
         if start > end or (end - start).days > 62:
             raise BohQueryError("INVALID_DATE_RANGE", "boh.invalid_date_range")
-        _instance_id, creds = self._credentials(user_id)
-        stores = await asyncio.to_thread(list_authorized_stores_with_oa_id, str(creds["token"]))
-        company_store = next(
-            (item for item in stores if item["store_id"] == thread.xm_store_id), None
+        self._credentials(user_id)
+        company_store = await self._company_store(
+            user_id=user_id, agent_id=agent_id, thread_id=thread_id
         )
-        if company_store is None:
-            raise BohQueryError("STORE_FORBIDDEN", "boh.store_forbidden")
         if not company_store["store_oa_id"] or not company_store["store_no"]:
             raise BohQueryError("STORE_MAPPING_MISSING", "boh.store_mapping_missing")
         try:
@@ -908,6 +1065,7 @@ def build_boh_report_tools(
     config: OctopConfig,
     connector_service: ConnectorService,
     agent_id: str,
+    workspace: Any | None = None,
 ) -> list[Any]:
     """Build BOH raw-data tools and a separate trusted analysis tool."""
     from harness_agent.mcp import sanitize_llm_tool_name
@@ -1068,6 +1226,79 @@ def build_boh_report_tools(
             ),
         )
     )
+
+    if workspace is not None:
+
+        async def export_boh_excel(
+            reportKind: str,
+            startDate: str,
+            endDate: str,
+            financeCategoryNames: list[str] | None = None,
+        ) -> str:
+            user_id, thread_id = identity()
+            try:
+                content, store_name = await service.export_official(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    thread_id=thread_id,
+                    report_kind=reportKind,
+                    start_date=startDate,
+                    end_date=endDate,
+                    finance_category_names=financeCategoryNames,
+                )
+                path = f"outbound/boh/{new_ulid()}_{reportKind}.xlsx"
+                await workspace.aupload_bytes(path, content)
+                repos.thread_repo.append_artifacts(thread_id, [path])
+            except BohQueryError as exc:
+                return json.dumps(
+                    {"status": "failed", "error": exc.code, "message": tr(exc.message_key, "zh")},
+                    ensure_ascii=False,
+                )
+            except OctopError as exc:
+                key = (
+                    "boh.company_relogin_required"
+                    if exc.code == ErrorCode.TOKEN_EXPIRED
+                    else "boh.unavailable"
+                )
+                return json.dumps(
+                    {"status": "failed", "error": exc.code.value, "message": tr(key, "zh")},
+                    ensure_ascii=False,
+                )
+            return json.dumps(
+                {
+                    "status": "ok",
+                    "path": path,
+                    "storeName": store_name,
+                    "reportKind": reportKind,
+                    "startDate": startDate,
+                    "endDate": endDate,
+                    "size": len(content),
+                },
+                ensure_ascii=False,
+            )
+
+        tools.append(
+            StructuredTool.from_function(
+                coroutine=export_boh_excel,
+                name=sanitize_llm_tool_name(f"{mcp_server_name}_export_boh_excel"),
+                description=tr("boh.export_description", "zh"),
+                args_schema=create_model(
+                    f"{mcp_server_name}_export_boh_excel_args",
+                    reportKind=(
+                        str,
+                        Field(description="cos、generic、assessment_week 或 generic_week"),
+                    ),
+                    startDate=(str, Field(description="开始日期 YYYY-MM-DD")),
+                    endDate=(str, Field(description="结束日期 YYYY-MM-DD")),
+                    financeCategoryNames=(
+                        list[str] | None,
+                        Field(
+                            default=None, description="仅 cos/generic 可用；默认食材成本，[] 为全部"
+                        ),
+                    ),
+                ),
+            )
+        )
 
     async def get_boh_default_period() -> str:
         return json.dumps(default_analysis_period(config.default_timezone), ensure_ascii=False)

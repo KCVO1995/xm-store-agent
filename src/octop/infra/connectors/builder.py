@@ -604,6 +604,7 @@ def inject_missing_gateway_tools(
                         config=config,
                         connector_service=svc,
                         agent_id=agent_id,
+                        workspace=getattr(agent, "workspace", None),
                     )
                     if tool.name not in tool_set
                 )

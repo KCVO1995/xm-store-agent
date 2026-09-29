@@ -531,6 +531,7 @@
     "snapshot_mismatch": "The data handle has expired or does not match this user, conversation, store, or query. Query again.",
     "invalid_date_range": "Start date must not exceed end date, and the range may span at most 62 days.",
     "result_too_large": "The BOH response exceeds 256 KiB. Reduce pageSize, narrow the date range, or narrow finance categories.",
+    "export_too_large": "The official BOH Excel file exceeds 20 MiB and cannot be delivered.",
     "timeout": "The BOH query timed out. Try again later.",
     "unavailable": "The BOH service is temporarily unavailable. Try again later.",
     "tool_description": "One raw inventory-summary page. Requires start/end dates; defaults to food cost, pageIndex=1, pageSize=500. Reduce page size or use rawItemIds (mapped to riIds). Fixed dateType=1, bzywlflSonNames=null, isMatchRaw=0, orderingCategoryList=[]; store comes from the conversation. Preserves total/records; usageDiffCost is variance amount. Reuse the first datasetId for later pages; no aggregation.",
@@ -540,6 +541,7 @@
     "search_description": "Search BOH raw-material candidates by code or name. Same names can have multiple codes; confirm the exact ID.",
     "daily_description": "Query raw inventory-summary records by material ID for each day in a range of up to 31 days. No trend calculation.",
     "analysis_description": "Trusted exact calculation over complete raw pages from this conversation. Use mode=overview or daily; missing pages, changed filters or a different store are rejected.",
+    "export_description": "Export one official BOH Excel file for the store selected in this conversation. Choose cos, generic, assessment_week, or generic_week; at most 62 days. cos/generic default to food cost; weekly reports do not accept finance categories. The server checks store and report permissions and attaches the file to this conversation. No store, user, or token parameter.",
     "period_description": "Return the month-to-yesterday period in the server timezone, or the previous full month on the first day of a month."
   },
   "tools": {
