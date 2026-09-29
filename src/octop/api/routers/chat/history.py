@@ -30,6 +30,7 @@ from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.trajectory.service import TrajectoryService
 from octop.infra.utils.locale import resolve_request_locale
+from octop.infra.xm_store import initialize_store_for_new_thread
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -223,6 +224,7 @@ async def create_thread(
         channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
         channel_subject_id=str(effective_uid),
     )
+    await initialize_store_for_new_thread(server.services, effective_uid, tid)
     return {"thread_id": tid, "session_key": sk}
 
 

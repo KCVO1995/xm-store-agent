@@ -531,6 +531,7 @@
     "snapshot_mismatch": "数据句柄已过期，或与当前用户、会话、门店、查询条件不匹配，请重新取数。",
     "invalid_date_range": "开始日期不能晚于结束日期，统计跨度最多 62 天。",
     "result_too_large": "BOH 返回的数据超过 256 KiB，请调小 pageSize、缩短日期范围或收窄财务分类后重试。",
+    "export_too_large": "BOH 官方 Excel 超过 20 MiB，无法交付该文件。",
     "timeout": "BOH 查询超时，请稍后重试。",
     "unavailable": "BOH 服务暂时不可用，请稍后重试。",
     "tool_description": "库存汇总原始单页。必填起止日期；默认食材成本、pageIndex=1、pageSize=500，可调小页长或用 rawItemIds 映射 riIds 精确筛物料。固定 dateType=1、bzywlflSonNames=null、isMatchRaw=0、orderingCategoryList=[]；门店从会话注入。返回完整 total/records，分差金额为 usageDiffCost。下一页传相同条件和第一页的 datasetId，不计算汇总。",
@@ -540,6 +541,7 @@
     "search_description": "按编码或名称查 BOH 原物料候选，返回原始物料字段和匹配总数；同名可能有多个编码，需确认具体 ID。",
     "daily_description": "按原物料 ID 和日期逐日调用库存汇总接口，返回每一天完整的原始记录或空记录；最多 31 天，不计算趋势。",
     "analysis_description": "可信精确计算入口：读取同一会话已取齐的 BOH 原始页；mode=overview 或 daily。缺页、条件不一致或门店变化会拒绝分析。",
+    "export_description": "导出当前会话已选门店的一张 BOH 官方 Excel。可选 cos、generic、assessment_week、generic_week；日期最多 62 天。cos/generic 默认食材成本，周报不接受财务类别筛选。服务端核对门店与报表权限，文件作为当前会话附件交付；不接受门店、用户或 token 参数。",
     "period_description": "根据服务器时区返回本月 1 日至昨天；若今天是每月 1 日则返回上个完整自然月。未指定日期时先调用。"
   },
   "tools": {

@@ -119,7 +119,6 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         phase="available",
         mcp_mode="gateway",
         category="productivity",
-        allowed_tools=("query_store_cos_page",),
     ),
     ConnectorCatalogEntry(
         kind="tencent-docs",

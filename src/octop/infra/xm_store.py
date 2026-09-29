@@ -10,10 +10,10 @@ from typing import Any
 import httpx
 
 from octop.infra.connectors.builder import mcp_server_name, new_internal_token
-from octop.infra.connectors.crypto import decrypt_credentials
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import parse_preferences_json
 from octop.infra.utils.ulid import new_ulid
+from octop.infra.xm_access import company_credentials
 
 LOGIN_URL = "https://digital.yujianxiaomian.com/meet-digital-manager/sso/v1/login"
 SEND_CODE_URL = "https://digital.yujianxiaomian.com/meet-digital-manager/sso/send/code"
@@ -24,7 +24,7 @@ STORES_URL = (
 )
 CONNECTOR_KIND = "xm-store"
 EXPIRED_CODES = {401, 405, 406}
-_PREFERENCE_KEY = "xm_store_last_store_id"
+_PENDING_SELECTION_KEY = "xm_store_pending_store_id"
 
 
 class _RedactLoginUrl(logging.Filter):
@@ -269,15 +269,13 @@ async def _company_user_from_profile(
         if "boh_sessions" in boh_creds:
             boh_creds.pop("boh_sessions")
             connector_service.encrypt_and_store(instance_id=boh.instance_id, payload=boh_creds)
+    _clear_pending_selection(services, user.id)
     return user
 
 
 def _token(services: Any, user_id: int) -> str | None:
-    inst = services.connector_repo.get_by_user_kind(user_id, CONNECTOR_KIND)
-    if inst is None or not inst.credential_blob or inst.status != "active":
-        return None
-    creds = decrypt_credentials(services.secret_repo, inst.credential_blob)
-    return str(creds.get("token") or "") or None
+    stored = company_credentials(services, user_id)
+    return str(stored[1]["token"]) if stored else None
 
 
 def _owned_thread(services: Any, user_id: int, thread_id: str) -> Any:
@@ -287,10 +285,19 @@ def _owned_thread(services: Any, user_id: int, thread_id: str) -> Any:
     return row
 
 
-def _preference(services: Any, user_id: int) -> str | None:
+def _pending_selection(services: Any, user_id: int) -> tuple[bool, str | None]:
     row = services.user_repo.get(user_id)
-    raw = parse_preferences_json(row.preferences_json if row else None).get(_PREFERENCE_KEY)
-    return raw if isinstance(raw, str) and raw else None
+    prefs = parse_preferences_json(row.preferences_json if row else None)
+    raw = prefs.get(_PENDING_SELECTION_KEY)
+    return (True, raw or None) if isinstance(raw, str) else (False, None)
+
+
+def _clear_pending_selection(services: Any, user_id: int) -> None:
+    row = services.user_repo.get(user_id)
+    prefs = parse_preferences_json(row.preferences_json if row else None)
+    if _PENDING_SELECTION_KEY in prefs:
+        prefs.pop(_PENDING_SELECTION_KEY)
+        services.user_repo.set_preferences_json(user_id, json.dumps(prefs, ensure_ascii=False))
 
 
 async def stores_for_user(
@@ -302,18 +309,30 @@ async def stores_for_user(
         return {"enabled": False, "stores": [], "selected_store_id": None}
     stores = await asyncio.to_thread(list_authorized_stores, token)
     allowed = {item["store_id"] for item in stores}
-    selected = (
-        thread.xm_store_id
-        if thread and thread.xm_store_id is not None
-        else _preference(services, user_id)
-    )
-    if selected not in allowed:
-        selected = None
-        if thread and thread.xm_store_id:
+    if thread and thread.xm_store_id is not None:
+        selected = thread.xm_store_id if thread.xm_store_id in allowed else None
+        if selected is None and thread.xm_store_id:
             services.thread_repo.set_xm_store_id(thread.thread_id, "")
-    if thread and thread.xm_store_id is None and selected is not None:
-        services.thread_repo.set_xm_store_id(thread.thread_id, selected)
+    else:
+        has_pending, pending_id = _pending_selection(services, user_id)
+        if has_pending and (pending_id is None or pending_id in allowed):
+            selected = pending_id
+        else:
+            selected = stores[0]["store_id"] if stores else None
+        if thread and (selected is not None or has_pending):
+            services.thread_repo.set_xm_store_id(thread.thread_id, selected or "")
     return {"enabled": True, "stores": stores, "selected_store_id": selected}
+
+
+async def initialize_store_for_new_thread(services: Any, user_id: int, thread_id: str) -> None:
+    """Persist the first authorized store before a new thread can send its first turn."""
+    try:
+        await stores_for_user(services, user_id, thread_id)
+    except OctopError as exc:
+        if exc.code not in (ErrorCode.INTERNAL_ERROR, ErrorCode.TOKEN_EXPIRED):
+            raise
+        return  # A store-list outage must not prevent creating the conversation.
+    _clear_pending_selection(services, user_id)
 
 
 async def select_store_for_user(
@@ -329,10 +348,8 @@ async def select_store_for_user(
             raise OctopError(ErrorCode.FORBIDDEN, "store not authorized")
     if thread:
         services.thread_repo.set_xm_store_id(thread.thread_id, store_id or "")
+        return
     row = services.user_repo.get(user_id)
     prefs = parse_preferences_json(row.preferences_json if row else None)
-    if store_id is None:
-        prefs.pop(_PREFERENCE_KEY, None)
-    else:
-        prefs[_PREFERENCE_KEY] = store_id
+    prefs[_PENDING_SELECTION_KEY] = store_id or ""
     services.user_repo.set_preferences_json(user_id, json.dumps(prefs, ensure_ascii=False))

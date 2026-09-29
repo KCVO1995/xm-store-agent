@@ -98,7 +98,7 @@ async def test_company_sms_login_reuses_password_identity_and_clears_boh_cache(
 async def test_company_accounts_store_selection_and_private_threads(
     env_with_main_agent, monkeypatch
 ):
-    client, server, _admin_auth, agent_id = env_with_main_agent
+    client, server, admin_auth, agent_id = env_with_main_agent
     openapi = build_app(server).openapi()
     assert "/api/auth/xm-store/login" in openapi["paths"]
     assert "/api/xm-store/stores" in openapi["paths"]
@@ -114,7 +114,10 @@ async def test_company_accounts_store_selection_and_private_threads(
 
     def fake_stores(token: str):
         owner = token.removeprefix("secret-")
-        return [{"store_id": f"store-{owner}", "store_name": owner, "store_no": "1"}]
+        return [
+            {"store_id": f"store-{owner}", "store_name": owner, "store_no": "1"},
+            {"store_id": f"store-{owner}-2", "store_name": f"{owner} 2", "store_no": "2"},
+        ]
 
     monkeypatch.setattr(store_service, "login_account", fake_login)
     monkeypatch.setattr(store_service, "list_authorized_stores", fake_stores)
@@ -145,6 +148,55 @@ async def test_company_accounts_store_selection_and_private_threads(
     bob_stores = await client.get("/api/xm-store/stores", headers=bob_auth)
     assert alice_stores.json()["stores"][0]["store_id"] == "store-alice"
     assert bob_stores.json()["stores"][0]["store_id"] == "store-bob"
+    assert alice_stores.json()["selected_store_id"] == "store-alice"
+    assert bob_stores.json()["selected_store_id"] == "store-bob"
+
+    shared = await client.patch(
+        f"/api/agents/{agent_id}", headers=admin_auth, json={"is_shared": True}
+    )
+    assert shared.status_code == 200, shared.text
+    created = await client.post(f"/api/agents/{agent_id}/threads", headers=alice_auth)
+    assert created.status_code == 201, created.text
+    assert server.services.thread_repo.get(created.json()["thread_id"]).xm_store_id == "store-alice"
+    await client.put(
+        "/api/xm-store/selection",
+        headers=alice_auth,
+        json={"store_id": "store-alice-2", "thread_id": created.json()["thread_id"]},
+    )
+    assert (
+        await client.get(
+            f"/api/xm-store/stores?thread_id={created.json()['thread_id']}", headers=alice_auth
+        )
+    ).json()["selected_store_id"] == "store-alice-2"
+    next_thread = await client.post(f"/api/agents/{agent_id}/threads", headers=alice_auth)
+    assert next_thread.status_code == 201, next_thread.text
+    assert server.services.thread_repo.get(next_thread.json()["thread_id"]).xm_store_id == (
+        "store-alice"
+    )
+    draft_selection = await client.put(
+        "/api/xm-store/selection",
+        headers=alice_auth,
+        json={"store_id": "store-alice-2", "thread_id": None},
+    )
+    assert draft_selection.status_code == 200
+    draft_thread = await client.post(f"/api/agents/{agent_id}/threads", headers=alice_auth)
+    assert draft_thread.status_code == 201, draft_thread.text
+    assert server.services.thread_repo.get(draft_thread.json()["thread_id"]).xm_store_id == (
+        "store-alice-2"
+    )
+    assert (await client.get("/api/xm-store/stores", headers=alice_auth)).json()[
+        "selected_store_id"
+    ] == "store-alice"
+    await client.put(
+        "/api/xm-store/selection",
+        headers=alice_auth,
+        json={"store_id": "store-alice-2", "thread_id": None},
+    )
+    alice_relogin = await sign_in("alice")
+    alice_relogin_auth = {"Authorization": f"Bearer {alice_relogin['access_token']}"}
+    assert (await client.get("/api/xm-store/stores", headers=alice_relogin_auth)).json()[
+        "selected_store_id"
+    ] == "store-alice"
 
     server.services.thread_repo.insert(
         thread_id="alice-thread",
@@ -203,6 +255,11 @@ async def test_company_accounts_store_selection_and_private_threads(
     monkeypatch.setattr(store_service, "list_authorized_stores", unavailable)
     assert (await client.get("/api/xm-store/stores", headers=alice_auth)).status_code == 502
     assert (await client.get("/api/auth/me", headers=alice_auth)).status_code == 200
+    failed_store_thread = await client.post(f"/api/agents/{agent_id}/threads", headers=alice_auth)
+    assert failed_store_thread.status_code == 201
+    assert (
+        server.services.thread_repo.get(failed_store_thread.json()["thread_id"]).xm_store_id is None
+    )
 
     def expired(_token: str):
         raise OctopError(ErrorCode.TOKEN_EXPIRED, "company token expired")
