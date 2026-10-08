@@ -1,14 +1,14 @@
 # 门店助手部署指引（单机 Docker + PostgreSQL）
 
-本文适用于一台 Linux 应用服务器、一个 Octop 实例、公司管理的 PostgreSQL 数据库，以及服务器前方已有 Nginx/同类 HTTPS 反向代理的首版部署。域名、证书、镜像标签、数据库地址和目录请替换为公司的实际值。这里仅描述部署步骤，不会自动发布代码或迁移本地测试数据。
+本文适用于一台 Linux 服务器，用 Docker Compose 同时运行一个 Octop 实例和一个 PostgreSQL 实例，并由 Nginx/同类 HTTPS 反向代理对外提供服务的首版部署。域名、证书、镜像标签和目录请替换为实际值。这里仅描述部署步骤，不会自动发布代码或迁移本地测试数据。
 
 ## 0. 发布前确认
 
-- **使用本项目的定制源码或由它构建的镜像**。公司登录、门店选择器和 `xm-store` MCP 是本项目改动，不在上游 Octop 镜像/PyPI 包中。目前这些改动还在本地工作区，尚未提交或推送；须先完成代码审查和发布提交，再让服务器检出该提交，或把从该提交构建的镜像放入公司私有镜像仓库。不要在服务器上直接拉上游 `latest` 代替。
+- **使用本项目的定制源码或由它构建的镜像**。公司登录、门店选择器和 `xm-store` MCP 是本项目改动，不在上游 Octop 镜像/PyPI 包中。须让服务器检出已发布的本项目提交，或使用从该提交构建的镜像；不要拉上游 `latest` 代替。
 - 不要把本地 `/tmp/xm-oct-local-test.*` 测试目录搬到服务器；它含测试管理员和不可用的 `local-mock` 模型。
-- 服务器应能访问公司账号接口 `https://digital.yujianxiaomian.com`、门店接口 `https://app-container.yujianxiaomian.com`，选定模型服务的地址，以及私网 PostgreSQL 地址。先由网络团队确认 DNS、路由、证书链、数据库端口和出口白名单。不要用真实密码拼接命令行 URL 来探测接口。
+- 服务器应能访问公司账号接口 `https://digital.yujianxiaomian.com`、门店接口 `https://app-container.yujianxiaomian.com` 和选定模型服务的地址；确认所需的 DNS、出口路由、证书链和白名单。
 - 准备仅供门店助手使用的 HTTPS 域名和证书；只对外开放 443（以及签发证书/跳转所需的 80）。Octop 的 8088 端口只绑定服务器回环地址。
-- 准备一个**专用 PostgreSQL 数据库与应用账号**。应用账号需要对该数据库执行表迁移，并能创建 Agent 内存使用的独立 schema；如需向量能力，由 DBA/云数据库平台启用 `vector` 扩展。不要复用已有业务库的 `public` schema。
+- Compose 将创建**专用 PostgreSQL 数据库与应用账号**。不要复用已有业务库；如需向量能力，可在该数据库中启用镜像自带的 `vector` 扩展。
 - 首版仍保持**单个 Octop 实例**。PostgreSQL 解决控制面和 Agent 内存的持久化问题，但不能仅凭换库就认为 Agent 运行态支持多实例横向扩容。
 
 ## 1. 构建和交付镜像
@@ -25,48 +25,75 @@ docker build -f docker/Dockerfile -t xm-oct:store-v1 .
 
 ## 2. 准备 PostgreSQL、数据目录和 Compose 文件
 
-由 DBA 创建数据库和应用账号，确认应用容器到数据库的网络连通、TLS 证书和账号权限。Octop 配置 `OCTOP_DATABASE_URL` 后，控制面使用 PostgreSQL；新 Agent 的内存默认也使用同一个 DSN 下的独立 schema。现有 SQLite 数据**不会自动迁移**到 PostgreSQL，不能把本地测试目录当作正式数据导入。
+Octop 使用 PostgreSQL 后，控制面和新 Agent 的内存默认使用同一数据库（Agent 各自使用独立 schema）。现有 SQLite 数据**不会自动迁移**到 PostgreSQL，不能把本地测试目录当作正式数据导入。
 
-在应用服务器创建仅运维人员可读写的持久化目录 `/srv/xm-oct/data` 和部署目录 `/srv/xm-oct/deploy`。即使数据库在别处，数据目录仍须持久化：这里有 Agent 工作区、配置、JWT/连接器加密密钥等文件。**首次初始化前保持 `/srv/xm-oct/data` 为空**；将数据库 CA 证书放到部署目录的 `/srv/xm-oct/deploy/pg-root.crt`，并在同目录创建仅部署账号可读的 `postgres.env`（权限 `0600`）：
+在服务器创建仅运维人员可读写的持久化目录 `/srv/xm-oct/data` 和部署目录 `/srv/xm-oct/deploy`。前者保存 Agent 工作区、配置、JWT/连接器加密密钥等文件；PostgreSQL 数据保存在下方 Compose 的 `pg_data` 持久化卷。**首次初始化前保持 `/srv/xm-oct/data` 和 `pg_data` 均为空**。
+
+在 `/srv/xm-oct/deploy/.env` 中设置强随机数据库密码，并将文件权限设为 `0600`：
 
 ```dotenv
-OCTOP_DATABASE_URL=postgresql://xm_oct:URL_ENCODED_PASSWORD@pg.example.internal:5432/xm_oct?sslmode=verify-full&sslrootcert=/etc/xm-oct/pg-root.crt
+OCTOP_PG_PASSWORD=替换为至少32位的随机字母数字密码
 ```
 
-把示例地址、用户名、数据库名和密码替换成实际值；密码中的特殊字符须做 URL 编码。若公司数据库使用不同的 TLS 接入方式，请按 DBA 提供的 DSN 和 CA 配置调整，但不要降低证书校验要求。`postgres.env` 不应进入 Git；能读取该文件或 Docker 环境变量的人员应视同拥有数据库凭证。
+例如可用 `openssl rand -hex 32` 生成密码；不要使用示例值，也不要把 `.env` 加入 Git、贴到工单或聊天中。Compose 只用这个文件做变量替换，密码会分别传给数据库和应用容器；能读取 `.env` 或容器环境变量的人员应视同拥有数据库凭证。同机容器通过 Compose 私有网络连接，不需要远程数据库部署使用的 `postgres.env` 或 `pg-root.crt`。这不影响浏览器访问所需的 HTTPS。
 
 在 `/srv/xm-oct/deploy/compose.yaml` 保存以下配置：
 
 ```yaml
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: xm_oct
+      POSTGRES_DB: xm_oct
+      POSTGRES_PASSWORD: ${OCTOP_PG_PASSWORD:?请在 .env 中设置数据库密码}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xm_oct -d xm_oct"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   xm-oct:
     image: xm-oct:store-v1
     container_name: xm-oct
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     # 绕过镜像默认入口脚本：它用本地 octop.db 文件判断首启，不适用于 PostgreSQL。
     entrypoint: ["octop"]
     command: ["run", "--host", "0.0.0.0", "--port", "8088"]
     ports:
       - "127.0.0.1:8088:8088"
-    env_file:
-      - ./postgres.env
     environment:
       HOME: /data
       OCTOP_BIND_HOST: 0.0.0.0
       OCTOP_PORT: "8088"
       OCTOP_LOG_LEVEL: info
       OCTOP_ADMIN_USERNAME: admin
+      OCTOP_DATABASE_DRIVER: postgresql
+      OCTOP_DATABASE_HOST: postgres
+      OCTOP_DATABASE_PORT: "5432"
+      OCTOP_DATABASE_NAME: xm_oct
+      OCTOP_DATABASE_USER: xm_oct
+      OCTOP_DATABASE_PASSWORD: ${OCTOP_PG_PASSWORD:?请在 .env 中设置数据库密码}
     volumes:
       - /srv/xm-oct/data:/data/.octop
-      - /srv/xm-oct/deploy/pg-root.crt:/etc/xm-oct/pg-root.crt:ro
+
+volumes:
+  pg_data:
 ```
 
-这里使用独立 Compose 文件，是为了明确限定公网暴露范围、数据位置和 PG 启动方式；仓库自带的 `docker/docker-compose.yml` 默认把 8088 绑定到所有网卡，且镜像默认入口脚本以本地 `octop.db` 是否存在判断首启。PG 模式若不绕过该脚本，容器重启会再次尝试 `octop init`。不要把公司账号密码、公司 token 或模型 API Key 写进 Compose 文件。模型服务优先在管理员页面配置。
+PostgreSQL 没有配置宿主机端口映射，只允许同一 Compose 网络中的 Octop 访问；不要额外开放 5432。这里使用独立 Compose 文件，是为了限定公网暴露范围、持久化位置和 PG 启动方式；仓库自带的 `docker/docker-compose.yml` 默认把 8088 绑定到所有网卡，且镜像默认入口脚本以本地 `octop.db` 是否存在判断首启。PG 模式若不绕过该脚本，容器重启会再次尝试 `octop init`。不要把公司账号密码、公司 token 或模型 API Key 写进 Compose 文件。模型服务优先在管理员页面配置。
 
-先在部署目录执行 `docker compose config -q`；它只校验配置，不向终端输出含数据库密码的展开结果。**仅首次部署、且目标 PostgreSQL 库和数据目录均为空时**，再执行一次初始化。以下命令在交互终端输入初始管理员密码，不把密码写进 Compose 文件或命令参数；密码必须符合项目策略（至少 8 位且包含字母和数字）：
+先在部署目录执行 `docker compose config -q`；它只校验配置，不向终端输出含数据库密码的展开结果。**仅首次部署、且 PostgreSQL 卷和 Octop 数据目录均为空时**，先启动数据库，再执行一次初始化。以下命令在交互终端输入初始管理员密码，不把密码写进 Compose 文件或命令参数；密码必须符合项目策略（至少 8 位且包含字母和数字）：
 
 ```bash
 docker compose config -q
+docker compose up -d postgres
 read -r -s -p "Initial admin password: " OCTOP_ADMIN_PASSWORD; echo
 export OCTOP_ADMIN_PASSWORD
 docker compose run --rm --no-deps --entrypoint octop -e OCTOP_ADMIN_PASSWORD xm-oct init --yes --admin-username admin
@@ -141,21 +168,22 @@ server {
 
 ## 6. 备份、升级与回滚
 
-需要**配套备份 PostgreSQL 数据库和 `/srv/xm-oct/data` 目录**：数据库含用户、会话索引、门店选择、加密连接器凭证及默认 Agent 内存；本地目录含工作区、配置、JWT/加密密钥等文件。只备份其中一边，恢复后可能无法登录、解密或读取会话。至少安排每日备份、异机保存和定期恢复演练。备份文件须加密并限制访问。
+需要**配套备份 PostgreSQL 数据库和 `/srv/xm-oct/data` 目录**：数据库含用户、会话索引、门店选择、加密连接器凭证及默认 Agent 内存；本地目录含工作区、配置、JWT/加密密钥等文件。只备份其中一边，恢复后可能无法登录、解密或读取会话。至少安排每日备份、异机保存和定期恢复演练。备份文件须加密并限制访问。Compose 的 `pg_data` 卷也必须持久保留；`docker compose down -v` 会删除该卷，不能用于日常停机或升级。
 
-Octop 自带的 `octop backup create` 支持 PG，但当前 Docker 运行镜像**没有安装 `pg_dump`/`pg_restore`**，因此不要直接依赖容器内该命令做 PG 备份。建议使用公司托管 PostgreSQL 的备份/快照能力，或由 DBA 在具备匹配版本 PostgreSQL 客户端的受控主机执行 `pg_dump -Fc`，并配套保存本地数据目录。详细的 PG 备份和恢复策略以公司 DBA 规范为准。
+Octop 自带的 `octop backup create` 支持 PG，但当前 Octop 镜像**没有安装 `pg_dump`/`pg_restore`**，因此不要直接依赖 Octop 容器内该命令做 PG 备份。可使用同机 PostgreSQL 容器自带的 `pg_dump`，并配套保存本地数据目录。详细的备份和恢复策略仍应符合公司规范。
 
-升级前先停止应用、取得同一维护窗口内的 PG 备份和本地目录快照，再换镜像。以下 `pg_dump` 示例假设运维主机已配置安全的 libpq 服务名 `xm_oct_prod`；不要把数据库密码直接写在命令行：
+升级前只停止 Octop 应用，保持数据库容器运行，取得同一维护窗口内的 PG 备份和本地目录快照，再换镜像。以下命令在部署目录运行，数据库密码不会出现在命令参数中：
 
 ```bash
-docker compose stop
-PGSERVICE=xm_oct_prod pg_dump -Fc -f /srv/xm-oct-db-before-upgrade.dump xm_oct
+docker compose stop xm-oct
+umask 077
+docker compose exec -T postgres pg_dump -U xm_oct -d xm_oct -Fc > /srv/xm-oct-db-before-upgrade.dump
 tar -C /srv/xm-oct -czf /srv/xm-oct-data-before-upgrade.tar.gz data
 # 将 compose.yaml 中的 image 改为已验证的新版本标签
 docker compose up -d
 curl -fsS http://127.0.0.1:8088/api/health
 ```
 
-若使用托管 PG 快照，就用该快照替代上面的 `pg_dump` 步骤。把两份备份转移到受控位置，不要长期放在服务器根目录。升级可能自动执行数据库迁移，**回滚必须同时恢复旧镜像、升级前的 PG 数据库和配套的数据目录快照**；不能只换回旧镜像，也不能把新数据库与旧密钥目录混用。建议先恢复到隔离环境验证，再按公司的回滚审批流程切换正式服务。
+确认导出命令成功且备份文件非空后，把两份备份转移到受控位置，不要长期放在服务器根目录。升级可能自动执行数据库迁移，**回滚必须同时恢复旧镜像、升级前的 PG 数据库和配套的数据目录快照**；不能只换回旧镜像，也不能把新数据库与旧密钥目录混用。建议先恢复到隔离环境验证，再按公司的回滚审批流程切换正式服务。
 
 相关能力与限制另见 [门店助手接入说明](xm-store-assistant.md)、[数据库配置](configuration.md#agent-memory-vs-control-plane)、[Docker 说明](../docker/README_CN.md) 和 [备份命令](cli.md#octop-backup)。
