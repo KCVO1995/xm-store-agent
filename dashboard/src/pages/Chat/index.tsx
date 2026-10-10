@@ -1638,7 +1638,6 @@ function ChatPageInner() {
               courseLoading={courseSelector.loading}
               courseSaving={courseSelector.saving}
               courseError={courseSelector.error}
-              onCourseSearch={courseSelector.search}
               onCourseSelect={(ids) => void courseSelector.select(ids)}
               onCourseRetry={courseSelector.retry}
               defaultModel={activeAgent?.default_model ?? null}

@@ -19,10 +19,9 @@ const path = (agentId: string) =>
   `/agents/${encodeURIComponent(agentId)}/chat-context/courses`;
 
 export const qixuebaoCoursesApi = {
-  list: (agentId: string, threadId?: string | null, keyword = "") => {
-    const params = new URLSearchParams({ page_num: "1" });
+  list: (agentId: string, threadId?: string | null, pageNum = 1) => {
+    const params = new URLSearchParams({ page_num: String(pageNum) });
     if (threadId) params.set("thread_id", threadId);
-    if (keyword.trim()) params.set("keyword", keyword.trim());
     return request<QixuebaoCourseList>(`${path(agentId)}?${params}`);
   },
   select: (agentId: string, threadId: string, courseIds: string[]) =>

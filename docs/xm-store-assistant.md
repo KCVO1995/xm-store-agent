@@ -10,6 +10,6 @@
 
 ## 企学宝课程选项
 
-管理员可在创建或编辑专家时单独启用「企学宝课程」，无需启用门店。聊天窗提供关键词搜索和多选；「全部课程」对应空列表。新会话默认使用全部课程，不继承上一个会话的选择。
+管理员可在创建或编辑专家时单独启用「企学宝课程」，无需启用门店。聊天窗按分页加载全部授权课程，按课程名称在前端即时筛选并支持多选，搜索时不会重新请求接口；「全部课程」对应空列表。新会话默认使用全部课程，不继承上一个会话的选择。
 
 后端使用当前公司用户的加密 token 请求 `POST https://meetfun-talents.yujianxiaomian.com/meetfun-talents/talents/qiXueBaoCourse/queryPage`，固定传入 `isEnable: true`、`pageSize: 1000`，并按关键词与页码查询。页面通过 `GET /api/agents/{agent_id}/chat-context/courses` 读取列表，通过 `PUT /api/agents/{agent_id}/chat-context/courses/selection` 保存会话选择。后端在保存时检查当前用户、专家、会话和课程授权；后续课程业务工具应调用 `authorized_courses_for_thread()` 获取可信课程范围，空列表表示全部已授权课程。

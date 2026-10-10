@@ -11,7 +11,6 @@ interface ChatContextSelectorsProps {
   courseLoading: boolean;
   courseSaving: boolean;
   courseError: boolean;
-  onCourseSearch: (keyword: string) => void;
   onCourseSelect: (ids: string[]) => void;
   onCourseRetry: () => void;
   isStreaming: boolean;
@@ -26,7 +25,6 @@ export default function ChatContextSelectors({
   courseLoading,
   courseSaving,
   courseError,
-  onCourseSearch,
   onCourseSelect,
   onCourseRetry,
   isStreaming,
@@ -59,7 +57,6 @@ export default function ChatContextSelectors({
           loading={courseLoading}
           saving={courseSaving}
           error={courseError}
-          onSearch={onCourseSearch}
           onSelect={onCourseSelect}
           onRetry={onCourseRetry}
           isStreaming={isStreaming}

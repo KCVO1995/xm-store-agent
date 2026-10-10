@@ -131,7 +131,6 @@ interface ChatInputProps {
   courseLoading?: boolean;
   courseSaving?: boolean;
   courseError?: boolean;
-  onCourseSearch?: (keyword: string) => void;
   onCourseSelect?: (ids: string[]) => void;
   onCourseRetry?: () => void;
   defaultModel?: string | null;
@@ -193,7 +192,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       courseLoading = false,
       courseSaving = false,
       courseError = false,
-      onCourseSearch = () => undefined,
       onCourseSelect = () => undefined,
       onCourseRetry = () => undefined,
       defaultModel,
@@ -758,7 +756,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             courseLoading={courseLoading}
             courseSaving={courseSaving}
             courseError={courseError}
-            onCourseSearch={onCourseSearch}
             onCourseSelect={onCourseSelect}
             onCourseRetry={onCourseRetry}
             isStreaming={isStreaming}

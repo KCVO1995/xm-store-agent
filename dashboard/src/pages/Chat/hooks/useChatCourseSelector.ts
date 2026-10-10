@@ -16,7 +16,6 @@ export function useChatCourseSelector(
   const { message } = App.useApp();
   const [courses, setCourses] = useState<QixuebaoCourse[]>([]);
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
-  const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
@@ -41,7 +40,6 @@ export function useChatCourseSelector(
     const carriedIds = carryDraft ? selectedIdsRef.current : [];
     if (!carryDraft) setCourses([]);
     setSelectedCourseIds(carriedIds);
-    setKeyword("");
     setError(false);
     setReady(carryDraft);
     hydratedKey.current = carryDraft ? selectionKey : "";
@@ -52,47 +50,44 @@ export function useChatCourseSelector(
   useEffect(() => {
     if (!enabled || !agentId) return;
     let cancelled = false;
-    const timer = setTimeout(
-      () => {
-        setLoading(true);
-        void qixuebaoCoursesApi
-          .list(agentId, persistedThreadId, keyword)
-          .then((result) => {
-            if (cancelled) return;
-            setCourses((previous) => {
-              const merged = new Map(
-                [
-                  ...previous.filter((course) =>
-                    selectedIdsRef.current.includes(course.course_id),
-                  ),
-                  ...result.selected_courses,
-                  ...result.courses,
-                ].map((course) => [course.course_id, course]),
-              );
-              return [...merged.values()];
-            });
-            if (hydratedKey.current !== selectionKey) {
-              setSelectedCourseIds(result.selected_course_ids);
-              selectedIdsRef.current = result.selected_course_ids;
-              hydratedKey.current = selectionKey;
-              setReady(true);
-            }
-            setError(false);
-          })
-          .catch(() => {
-            if (!cancelled) setError(true);
-          })
-          .finally(() => {
-            if (!cancelled) setLoading(false);
-          });
-      },
-      keyword ? 250 : 0,
-    );
+    setLoading(true);
+    void qixuebaoCoursesApi
+      .list(agentId, persistedThreadId)
+      .then(async (result) => {
+        if (cancelled) return;
+        const allCourses = [...result.selected_courses, ...result.courses];
+        for (let pageNum = 2; pageNum <= result.pages; pageNum += 1) {
+          const page = await qixuebaoCoursesApi.list(
+            agentId,
+            persistedThreadId,
+            pageNum,
+          );
+          if (cancelled) return;
+          allCourses.push(...page.courses);
+        }
+        setCourses([
+          ...new Map(
+            allCourses.map((course) => [course.course_id, course]),
+          ).values(),
+        ]);
+        if (hydratedKey.current !== selectionKey) {
+          setSelectedCourseIds(result.selected_course_ids);
+          selectedIdsRef.current = result.selected_course_ids;
+          hydratedKey.current = selectionKey;
+          setReady(true);
+        }
+        setError(false);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-  }, [agentId, persistedThreadId, enabled, keyword, retry, selectionKey]);
+  }, [agentId, persistedThreadId, enabled, retry, selectionKey]);
 
   const select = useCallback(
     async (ids: string[]) => {
@@ -128,7 +123,6 @@ export function useChatCourseSelector(
     saving,
     error,
     select,
-    search: setKeyword,
     retry: () => setRetry((value) => value + 1),
   };
 }

@@ -9,7 +9,6 @@ interface ChatCourseSelectorProps {
   loading: boolean;
   saving: boolean;
   error: boolean;
-  onSearch: (keyword: string) => void;
   onSelect: (ids: string[]) => void;
   onRetry: () => void;
   isStreaming: boolean;
@@ -21,7 +20,6 @@ export default function ChatCourseSelector({
   loading,
   saving,
   error,
-  onSearch,
   onSelect,
   onRetry,
   isStreaming,
@@ -47,7 +45,7 @@ export default function ChatCourseSelector({
           mode="multiple"
           showSearch
           allowClear
-          filterOption={false}
+          optionFilterProp="label"
           loading={loading || saving}
           disabled={loading || saving || isStreaming}
           style={{ minWidth: 220, maxWidth: "100%" }}
@@ -60,7 +58,6 @@ export default function ChatCourseSelector({
               label: course.course_name,
             })),
           ]}
-          onSearch={onSearch}
           onChange={(values) =>
             onSelect(values.includes("__all__") ? [] : values)
           }
