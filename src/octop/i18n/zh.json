@@ -515,6 +515,19 @@
     },
     "preflight_failed_summary": "一项或多项预检未通过"
   },
+  "yuxue": {
+    "company_login_required": "请先使用公司账号登录。",
+    "company_relogin_required": "公司登录已过期，请重新登录后查询课程明细。",
+    "thread_forbidden": "只能查询本人当前聊天会话选择的门店和课程。",
+    "store_required": "请先在当前会话选择门店。",
+    "store_forbidden": "当前账号没有所选门店的访问权限，请重新选择门店。",
+    "course_forbidden": "当前账号没有课程明细的访问权限。",
+    "course_selection_forbidden": "请确认专家已启用企学宝课程选项，并重新选择有权限的课程。",
+    "timeout": "课程明细查询超时，请稍后重试。",
+    "unavailable": "遇学服务暂时不可用，请稍后重试。",
+    "result_too_large": "课程明细返回超过 256 KiB，请减小 pageSize 或缩小查询条件。",
+    "tool_description": "分页查询当前会话所选门店、所选企学宝课程的人员学习明细。门店和课程由服务端读取并校验，全部课程对应空列表；不接受门店、课程 ID、用户、会话或 token 参数。courseStatus 默认 PUBLISHED（已发布/开放中），也可选 UNPUBLISHED（未发布）、CLOSED（已关闭）。pageNum 默认 1，pageSize 默认 100、最多 1000。可按 courseName、staffName、baseIdList 筛选，completeStatus 为列表：LS_NOTSTART 未学习、LS_PROGRESS 学习中、LS_COMPLETED 已学完、LS_INCOMPLETE 未学完；completeTimeStart/End 为完成时间范围，joinTimeStart/End 为加入时间范围，使用 date-time 字符串。保留原始 records、total、pages、current、size 和人员信息；一页不是全部结果，需按相同筛选条件继续翻页。"
+  },
   "boh": {
     "company_login_required": "请先使用掌柜账号登录。",
     "company_relogin_required": "掌柜登录信息已失效或缺少企微 ID，请重新登录。",

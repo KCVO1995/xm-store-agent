@@ -1,7 +1,7 @@
 # Makefile for Octop
 # Usage:
 #   make              - Show this help
-#   make all          - format (BE+FE) + backend lint + typecheck + test (ship bar)
+#   make all          - format (BE+FE) + backend lint + typecheck + full test suite
 #   make build        - Build frontend + Python wheel
 #   make publish      - Build + upload to PyPI
 #
@@ -17,6 +17,7 @@ SHELL := /bin/bash
 REPO_ROOT     := $(shell pwd)
 DASHBOARD_DIR := $(REPO_ROOT)/dashboard
 DASHBOARD_DEST := $(REPO_ROOT)/src/octop/dashboard
+DASHBOARD_DEPS_STAMP := $(DASHBOARD_DIR)/node_modules/.octop-deps-installed
 DIST_DIR      := $(REPO_ROOT)/dist
 
 # PyPI repository (override: make publish PYPI_REPO=testpypi)
@@ -58,7 +59,7 @@ help:
 	@echo "  test-online      pytest against .venv-online (not live)"
 	@echo "  run-online       Start octop run from .venv-online"
 	@echo ""
-	@echo "Quality targets (ship bar):"
+	@echo "Quality targets (backend):"
 	@echo "  all              format-all + lint + typecheck + test (backend lint/typecheck/test)"
 	@echo "  precommit        fast change-aware gate for the git pre-commit hook (testmon-scoped tests)"
 	@echo "  lint             Ruff check + format check (src, tests)"
@@ -79,7 +80,7 @@ help:
 	@echo "  check-all        lint-all + typecheck-all + test"
 	@echo ""
 	@echo "Utility targets:"
-	@echo "  install-hooks    Point git to .githooks (pre-commit: make all + dashboard build)"
+	@echo "  install-hooks    Point git to .githooks (pre-commit: make precommit + build if dashboard changed)"
 	@echo "  install          Install Python dev dependencies (alias: install-dev)"
 	@echo "  install-dev      uv sync / pip install -e \".[dev]\""
 	@echo "  install-tools    Install build + twine for publishing"
@@ -93,12 +94,16 @@ help:
 build: build-frontend build-wheel
 
 .PHONY: build-frontend
-build-frontend:
-	@echo "[build-frontend] Installing npm dependencies..."
-	cd $(DASHBOARD_DIR) && npm ci
+build-frontend: $(DASHBOARD_DEPS_STAMP)
 	@echo "[build-frontend] Building dashboard (output: $(DASHBOARD_DEST))..."
-	cd $(DASHBOARD_DIR) && NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npm run build
+	cd "$(DASHBOARD_DIR)" && NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npm run build
 	@echo "[build-frontend] Done."
+
+# Reinstall only on the first build or after a dependency manifest changes.
+$(DASHBOARD_DEPS_STAMP): $(DASHBOARD_DIR)/package.json $(DASHBOARD_DIR)/package-lock.json
+	@echo "[build-frontend] Installing npm dependencies..."
+	cd "$(DASHBOARD_DIR)" && npm ci
+	@touch "$@"
 
 .PHONY: build-wheel
 build-wheel:
@@ -235,7 +240,7 @@ test-live:
 
 # Fast, change-aware gate for the local pre-commit hook. Runs ruff/mypy (cheap
 # and kept full for accuracy) plus only the tests affected by changed files via
-# pytest-testmon. The full suite still runs in CI (`make all`); this is local
+# pytest-testmon. The full suite still runs in CI (`make test`); this is local
 # feedback only, so a missed cross-module impact is caught there.
 .PHONY: precommit
 precommit: format-all lint typecheck test-affected
@@ -243,7 +248,7 @@ precommit: format-all lint typecheck test-affected
 # NOTE: do NOT pass `-m` here — pytest-testmon deactivates its affected-test
 # selection whenever a marker expression is present, which would fall back to
 # the full suite. Live tests under tests/live/ auto-skip when credentials are
-# absent, so running them unscoped is cheap and safe; the CI `make all` gate
+# absent, so running them unscoped is cheap and safe; the CI `make test` gate
 # keeps `-m "not live"` for the authoritative full run.
 #
 # NOTE: testmon detects changes via `git ls-files -m` (worktree vs index), which
@@ -296,7 +301,7 @@ install-hooks:
 	@echo "[install-hooks] Setting core.hooksPath=.githooks"
 	git config core.hooksPath .githooks
 	@chmod +x "$(REPO_ROOT)/.githooks/"* 2>/dev/null || true
-	@echo "[install-hooks] Done. Pre-commit will run: make precommit (format-all + lint + typecheck + testmon-scoped tests), dashboard build"
+	@echo "[install-hooks] Done. Pre-commit will run: make precommit (format-all + lint + typecheck + testmon-scoped tests), build if dashboard changed"
 	@echo "[install-hooks] Bypass: SKIP_PRECOMMIT=1 git commit …   or   git commit --no-verify"
 
 .PHONY: install install-dev

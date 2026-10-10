@@ -781,13 +781,13 @@ async def patch_instance(
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
-    if inst.kind == "boh" and (
+    if inst.kind in {"boh", "yuxue"} and (
         body.credentials is not None
         or body.shared is not None
         or body.display_name is not None
         or body.description is not None
     ):
-        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "managed BOH connector")
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "managed company connector")
     if inst.kind == "xm-store" and (body.shared is True or body.credentials is not None):
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "use company account login")
     if is_custom_mcp_kind(inst.kind):
@@ -899,8 +899,8 @@ async def delete_instance(
     if inst is None:
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
-    if inst.kind == "boh":
-        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "managed BOH connector")
+    if inst.kind in {"boh", "yuxue"}:
+        raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, "managed company connector")
     user_id = inst.user_id
     cli_creds: dict[str, Any] | None = None
     if inst.kind in ("feishu-cli", "wecom-cli") and inst.has_credentials:

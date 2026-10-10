@@ -30,7 +30,7 @@ Navigation guide for AI coding agents working in this repository.
 
 - Turn tasks into verifiable goals (what to test, which command proves success).
 - For multi-step work, sketch a short plan: `step → verify: …`
-- Before saying "done", provide verification evidence; the default ship bar is **`make all` green** (see [§6 Run commands](#6-run-commands), [§10 Change workflow](#10-change-workflow)).
+- Before saying "done", provide verification evidence for the affected behavior. Use the checks in [§6 Run commands](#6-run-commands); full suites run in CI and before releases when the exact commit has not already passed them.
 
 ## 2. What this is
 
@@ -183,7 +183,9 @@ Frontend talks to Octop **only** via `/api` HTTP — never import or assume Pyth
 
 ```bash
 make install-hooks                      # once per clone: enable .githooks pre-commit
-make all                                # format-all + lint + typecheck + test (ship bar)
+make precommit                          # format-all + lint + typecheck + affected tests
+make test-affected                      # testmon: tests affected by code changes
+make all                                # format-all + lint + typecheck + full test suite
 make format-all                         # backend Ruff + dashboard Prettier write
 make lint                               # ruff check + format check
 make typecheck                          # mypy --strict src/octop
@@ -196,7 +198,22 @@ cd dashboard && npx tsc -b             # frontend typecheck (after UI changes)
 make build-frontend                     # dashboard/ → src/octop/dashboard/
 ```
 
-**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so every `git commit` runs **`make all`** (which first runs **`format-all`**: backend Ruff + dashboard Prettier write, then lint / typecheck / test) and dashboard **`npm run build`**. Formatted files that were already staged are re-added so the commit includes the formatted content. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first (CI runs on Linux **and** Windows).
+**Choose checks by change scope:**
+
+| Change | Local verification |
+|--------|--------------------|
+| Styles only | Visual inspection; no automated tests required |
+| Frontend behavior | `make typecheck-frontend` + relevant Vitest cases; frontend lint when appropriate |
+| Backend behavior | `make lint`, `make typecheck` + affected unit/integration tests (`make test-affected` or an explicit test path) |
+| Database, authentication, shared infrastructure | Relevant integration tests in addition to the checks above; verify the target database when changing persistence |
+| Documentation or build tooling | Check the changed documentation/commands; exercise the affected build/hook paths |
+| Start/restart or deploy an exact commit that already passed CI | Build/use the artifact as needed, then startup and health checks |
+
+CI keeps the full Linux/Windows test suites. Before a release without successful CI for the exact commit, run `make all` (and frontend checks when affected). Do not repeat full suites for every edit or deployment of the same tested commit. Testmon may run the full suite once to create its baseline, then selects affected tests.
+
+**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so every `git commit` runs **`make precommit`** (`format-all` + backend lint / typecheck + testmon-scoped tests). Staged changes under `dashboard/`, including deletions and renames, also run **`make build-frontend`** (which includes frontend type checking). Formatted files that were already staged are re-added so the commit includes the formatted content. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first.
+
+**Frontend builds:** Vite serves source changes during development. Run `make build-frontend` when a static dashboard artifact is needed. It reuses npm dependencies after the first build until `package.json` or `package-lock.json` changes; removing `node_modules` also forces a reinstall.
 
 ## 7. Key patterns
 
@@ -365,7 +382,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Internationalization (dashboard) | `dashboard/src/locales/`, `dashboard/src/i18n.ts`, `dashboard/src/utils/apiError.ts` |
 | Server timezone (config.json) | `default_timezone` in `config.py`; `GET /api/settings/timezone`; `dashboard/src/hooks/useServerTimezone.ts`; `dashboard/src/utils/formatMessageTime.ts` |
 | Test layout & shared helpers | `tests/support/` (`fakes`, `auth`, `http`, `scenarios`, `app`), `tests/integration/conftest.py`, `tests/unit/{db,cron,gateway,agents,api,cli}/` |
-| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` incl. `format-all` + dashboard build) |
+| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make precommit` + build when dashboard changes) |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |
 | Connectors & OAuth | `infra/connectors/`, `api/routers/connectors.py` |
@@ -377,9 +394,9 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 ## 10. Change workflow
 
 1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)).
-2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
-3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
-4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc -b` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
+2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make precommit` + build when dashboard changes).
+3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/`. Use Vite during development and run `make build-frontend` when a static artifact is needed.
+4. **Verify** — select local checks by scope from [§6](#6-run-commands); full suites remain in CI and releases without prior CI evidence. Pure style changes require visual inspection only. After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
 ### Branching & release

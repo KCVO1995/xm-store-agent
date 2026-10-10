@@ -20,6 +20,7 @@ from octop.infra.connectors.gateway.adapters import (
     weknora,
     xm_store,
     yuandian,
+    yuxue,
 )
 
 
@@ -47,6 +48,7 @@ _ADAPTERS: dict[str, GatewayAdapter] = {
     "weknora": weknora,
     "xm-store": xm_store,
     "boh": boh,
+    "yuxue": yuxue,
 }
 
 
