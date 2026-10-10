@@ -36,6 +36,7 @@ import { useChatNavigation } from "./hooks/useChatNavigation";
 import { useChatSessionActions } from "./hooks/useChatSessionActions";
 
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
+import { useChatCourseSelector } from "./hooks/useChatCourseSelector";
 import type { HitlSessionPolicy } from "./utils/hitlSessionPolicy";
 import { mergeAllowTools } from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
@@ -49,7 +50,6 @@ import {
 import { isFileToolName } from "./constants";
 import { browserApi } from "../../api/modules/browser";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
-import { xmStoreApi } from "../../api/modules/xmStore";
 import { expireAuthSession } from "../../api/request";
 import type { TokenUsage } from "../../api/types";
 import type { ChatAttachment } from "./hooks/useChat";
@@ -115,9 +115,6 @@ export default function ChatPage() {
 function ChatPageInner() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  useEffect(() => {
-    void xmStoreApi.list().catch(() => undefined);
-  }, []);
   const location = useLocation();
   prefetchVoiceConfig();
   const { agentId: routeAgentId, threadId } = useParams<{
@@ -200,6 +197,13 @@ function ChatPageInner() {
   const activeAgent = useMemo(
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
+  );
+  const chatSelectors = activeAgent?.chat_selectors ?? [];
+  const courseSelectorEnabled = chatSelectors.includes("qixuebao_course");
+  const courseSelector = useChatCourseSelector(
+    resolvedAgentId,
+    activeThreadId,
+    courseSelectorEnabled,
   );
   const agentChatReady = isAgentChatReady(activeAgent?.state);
   const trajectoryEnabled =
@@ -645,6 +649,9 @@ function ChatPageInner() {
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
+    selectedCourseIds: courseSelector.selectedCourseIds,
+    courseSelectorEnabled,
+    courseSelectionReady: courseSelector.ready,
     reasoningMode,
     reasoningEffort,
     conversationMode,
@@ -1583,7 +1590,12 @@ function ChatPageInner() {
               onNewChat={handleNewChat}
               isStreaming={isStreaming}
               isTeam={isTeamChat}
-              disabled={!agentChatReady || noAgents || memoryMaintBlocking}
+              disabled={
+                !agentChatReady ||
+                noAgents ||
+                memoryMaintBlocking ||
+                courseSelector.saving
+              }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
                 prefillInputRef.current = "";
@@ -1620,6 +1632,15 @@ function ChatPageInner() {
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
+              chatSelectors={chatSelectors}
+              courses={courseSelector.courses}
+              selectedCourseIds={courseSelector.selectedCourseIds}
+              courseLoading={courseSelector.loading}
+              courseSaving={courseSelector.saving}
+              courseError={courseSelector.error}
+              onCourseSearch={courseSelector.search}
+              onCourseSelect={(ids) => void courseSelector.select(ids)}
+              onCourseRetry={courseSelector.retry}
               defaultModel={activeAgent?.default_model ?? null}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}

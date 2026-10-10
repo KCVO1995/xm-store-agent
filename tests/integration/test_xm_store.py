@@ -152,7 +152,9 @@ async def test_company_accounts_store_selection_and_private_threads(
     assert bob_stores.json()["selected_store_id"] == "store-bob"
 
     shared = await client.patch(
-        f"/api/agents/{agent_id}", headers=admin_auth, json={"is_shared": True}
+        f"/api/agents/{agent_id}",
+        headers=admin_auth,
+        json={"is_shared": True, "chat_selectors": ["xm_store"]},
     )
     assert shared.status_code == 200, shared.text
     created = await client.post(f"/api/agents/{agent_id}/threads", headers=alice_auth)

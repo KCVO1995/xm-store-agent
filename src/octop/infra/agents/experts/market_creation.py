@@ -55,6 +55,7 @@ class SkillHubMarketAgentCreateOptions:
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
     max_iters: int | None = None
     max_input_length: int | None = None
     temperature: float | None = None
@@ -330,6 +331,7 @@ async def create_agent_from_skillhub_skillset(
         skill_package_ids=options.skill_package_ids,
         knowledge_base_ids=options.knowledge_base_ids,
         mcp_servers=options.mcp_servers,
+        chat_selectors=options.chat_selectors,
     )
     registry = server.app_runtime.agent_registry
 

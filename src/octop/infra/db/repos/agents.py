@@ -47,6 +47,7 @@ class AgentRow:
     knowledge_base_ids: str | None = None
     mcp_servers: str | None = None
     kind: str = "expert"
+    chat_selectors: str = "[]"
 
     @classmethod
     def from_row(cls, r: DbRow) -> AgentRow:
@@ -88,6 +89,7 @@ class AgentRow:
             knowledge_base_ids=_opt_str(r, "knowledge_base_ids"),
             mcp_servers=_opt_str(r, "mcp_servers"),
             kind=kind,
+            chat_selectors=_opt_str(r, "chat_selectors") or "[]",
         )
 
 
@@ -117,6 +119,7 @@ class AgentRepo:
         knowledge_base_ids: str | None = None,
         mcp_servers: str | None = None,
         kind: str = "expert",
+        chat_selectors: str = "[]",
     ) -> str:
         ts = now_ts()
         agent_kind = kind if kind in {"expert", "team"} else "expert"
@@ -126,8 +129,8 @@ class AgentRepo:
                 "persona_mbti, default_model, system_prompt, enabled, config_json, icon, "
                 "template_name, color, icon_name, icon_url, skill_package_ids, "
                 "published_expert_id, welcome_message, knowledge_base_ids, mcp_servers, "
-                "kind, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "kind, chat_selectors, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     agent_id,
                     user_id,
@@ -148,6 +151,7 @@ class AgentRepo:
                     knowledge_base_ids,
                     mcp_servers,
                     agent_kind,
+                    chat_selectors,
                     ts,
                     ts,
                 ),
@@ -230,6 +234,7 @@ class AgentRepo:
         welcome_message: str | None | object = UNSET,
         knowledge_base_ids: str | None | object = UNSET,
         mcp_servers: str | None | object = UNSET,
+        chat_selectors: str | object = UNSET,
     ) -> None:
         fields, params = optional_updates(
             [
@@ -249,6 +254,7 @@ class AgentRepo:
                 ("welcome_message", welcome_message),
                 ("knowledge_base_ids", knowledge_base_ids),
                 ("mcp_servers", mcp_servers),
+                ("chat_selectors", chat_selectors),
             ]
         )
         if not fields:

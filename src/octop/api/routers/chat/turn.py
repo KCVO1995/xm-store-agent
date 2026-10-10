@@ -32,6 +32,7 @@ from octop.infra.gateway.process.message_keys import (
 from octop.infra.gateway.process.usage_record import extract_usage_from_chunk
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import WS_CHANNEL_ID
+from octop.infra.qixuebao_courses import select_courses_for_user
 
 __all__ = [
     "COMPOSER_CTX_KEY",
@@ -263,6 +264,10 @@ async def prepare_dashboard_turn(
         thread_id=turn.thread_id,
         session_key=turn.session_key,
     )
+    if turn.qixuebao_course_ids is not None:
+        await select_courses_for_user(
+            server.services, user.id, agent_id, thread_id, turn.qixuebao_course_ids
+        )
     model_ref = (turn.default_model or "").strip() or None
     if (
         model_ref is not None

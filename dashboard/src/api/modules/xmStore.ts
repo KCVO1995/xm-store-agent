@@ -13,15 +13,25 @@ export interface XmStoreList {
 }
 
 export const xmStoreApi = {
-  list: (threadId?: string | null) =>
-    request<XmStoreList>(
-      `/xm-store/stores${
-        threadId ? `?thread_id=${encodeURIComponent(threadId)}` : ""
-      }`,
-    ),
-  select: (storeId: string | null, threadId?: string | null) =>
+  list: (threadId?: string | null, agentId?: string | null) => {
+    const params = new URLSearchParams();
+    if (threadId) params.set("thread_id", threadId);
+    if (agentId) params.set("agent_id", agentId);
+    return request<XmStoreList>(
+      `/xm-store/stores${params.size ? `?${params}` : ""}`,
+    );
+  },
+  select: (
+    storeId: string | null,
+    threadId?: string | null,
+    agentId?: string | null,
+  ) =>
     request<{ selected_store_id: string | null }>("/xm-store/selection", {
       method: "PUT",
-      body: JSON.stringify({ store_id: storeId, thread_id: threadId ?? null }),
+      body: JSON.stringify({
+        store_id: storeId,
+        thread_id: threadId ?? null,
+        agent_id: agentId ?? null,
+      }),
     }),
 };

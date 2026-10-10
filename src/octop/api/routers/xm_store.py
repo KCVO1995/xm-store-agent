@@ -28,6 +28,9 @@ class StoreListResponse(BaseModel):
 class StoreSelectionBody(BaseModel):
     store_id: str | None = Field(description="Authorized store ID, or null to clear selection.")
     thread_id: str | None = Field(default=None, description="Current thread; omit for new chat.")
+    agent_id: str | None = Field(
+        default=None, description="Expert whose store selector is enabled."
+    )
 
 
 @router.get(
@@ -35,11 +38,12 @@ class StoreSelectionBody(BaseModel):
 )
 async def get_stores(
     thread_id: str | None = None,
+    agent_id: str | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> StoreListResponse:
     """Load selector options directly after login, without invoking MCP."""
-    result = await stores_for_user(server.services, user.id, thread_id)
+    result = await stores_for_user(server.services, user.id, thread_id, agent_id)
     return StoreListResponse.model_validate(result)
 
 
@@ -50,5 +54,7 @@ async def put_selection(
     server: Any = Depends(get_server),
 ) -> dict[str, str | None]:
     """Reject forged store IDs and persist thread selection plus the user's next-chat default."""
-    await select_store_for_user(server.services, user.id, body.store_id, body.thread_id)
+    await select_store_for_user(
+        server.services, user.id, body.store_id, body.thread_id, body.agent_id
+    )
     return {"selected_store_id": body.store_id}

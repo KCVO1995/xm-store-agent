@@ -226,6 +226,7 @@ export default function CreateFromExpertDrawer({
       skill_package_ids?: string[];
       knowledge_base_ids?: string[];
       mcp_servers?: string[];
+      chat_selectors?: string[];
       enable_trajectory?: boolean;
     } & AgentRuntimeFormValues
   >();
@@ -313,6 +314,10 @@ export default function CreateFromExpertDrawer({
       skill_package_ids: [],
       knowledge_base_ids: [],
       mcp_servers: [],
+      chat_selectors:
+        source.kind === "builtin" && source.expert.id === "xm-store-assistant"
+          ? ["xm_store"]
+          : [],
       enable_trajectory: true,
     });
 
@@ -447,6 +452,7 @@ export default function CreateFromExpertDrawer({
           : [],
         knowledge_base_ids: values.knowledge_base_ids ?? [],
         mcp_servers: values.mcp_servers ?? [],
+        chat_selectors: values.chat_selectors ?? [],
         color: isCuratedPalette(colorPalette)
           ? expertPaletteColor(colorPalette)
           : colorPalette,

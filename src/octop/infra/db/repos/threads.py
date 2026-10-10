@@ -71,6 +71,7 @@ class ThreadRow:
     pending_plan_path: str | None = None
     hitl_policy: str | None = None
     xm_store_id: str | None = None
+    chat_context_json: str = "{}"
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -94,6 +95,10 @@ class ThreadRow:
             xm_store_id = r["xm_store_id"]
         except (KeyError, IndexError):
             xm_store_id = None
+        try:
+            chat_context_json = r["chat_context_json"]
+        except (KeyError, IndexError):
+            chat_context_json = None
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -113,6 +118,7 @@ class ThreadRow:
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
             hitl_policy=str(hitl_policy) if hitl_policy else None,
             xm_store_id=str(xm_store_id) if xm_store_id is not None else None,
+            chat_context_json=str(chat_context_json or "{}"),
         )
 
 
@@ -283,6 +289,25 @@ class ThreadRepo:
             conn.execute(
                 "UPDATE threads SET xm_store_id = ? WHERE thread_id = ?",
                 (store_id, thread_id),
+            )
+
+    def set_chat_context_ids(self, thread_id: str, key: str, ids: list[str]) -> None:
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT chat_context_json FROM threads WHERE thread_id = ?", (thread_id,)
+            ).fetchone()
+            if row is None:
+                return
+            try:
+                context = json.loads(row["chat_context_json"] or "{}")
+            except (TypeError, ValueError):
+                context = {}
+            if not isinstance(context, dict):
+                context = {}
+            context[key] = ids
+            conn.execute(
+                "UPDATE threads SET chat_context_json = ? WHERE thread_id = ?",
+                (json.dumps(context, ensure_ascii=False), thread_id),
             )
 
     def update_composer(

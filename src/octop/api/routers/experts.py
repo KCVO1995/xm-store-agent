@@ -136,6 +136,7 @@ class FromExpertBody(AgentRuntimeFields):
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
     color: str | None = None
     agent_id: str | None = Field(
         default=None,
@@ -177,6 +178,7 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
     color: str | None = None
     agent_id: str | None = Field(
         default=None,
@@ -666,6 +668,7 @@ async def install_published_expert(
             skill_package_ids=body.skill_package_ids,
             knowledge_base_ids=kb_ids,
             mcp_servers=servers,
+            chat_selectors=body.chat_selectors,
             color=body.color,
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
@@ -780,6 +783,7 @@ async def install_expert_hub_item(
                 skill_package_ids=package_ids,
                 knowledge_base_ids=kb_ids,
                 mcp_servers=servers,
+                chat_selectors=body.chat_selectors,
                 enable_trajectory=body.enable_trajectory,
                 workspace_patch=patch,
                 composer_copies=copies,
@@ -887,6 +891,7 @@ async def create_agent_from_expert(
         skill_package_ids=package_ids,
         knowledge_base_ids=kb_ids,
         mcp_servers=servers,
+        chat_selectors=body.chat_selectors,
     )
     patch, copies, report = _composer_apply(body, user=user, server=server)
     row = await server.app_runtime.agent_registry.create(

@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from octop.infra.chat_selectors import XM_STORE, selector_enabled
 from octop.infra.connectors.builder import mcp_server_name, new_internal_token
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import parse_preferences_json
@@ -301,9 +302,15 @@ def _clear_pending_selection(services: Any, user_id: int) -> None:
 
 
 async def stores_for_user(
-    services: Any, user_id: int, thread_id: str | None = None
+    services: Any, user_id: int, thread_id: str | None = None, agent_id: str | None = None
 ) -> dict[str, Any]:
     thread = _owned_thread(services, user_id, thread_id) if thread_id else None
+    if agent_id is not None:
+        agent = services.agent_repo.get(agent_id)
+        if agent is None or not selector_enabled(agent.chat_selectors, XM_STORE):
+            raise OctopError(ErrorCode.FORBIDDEN, "store selector is not enabled")
+        if thread and thread.agent_id != agent_id:
+            raise OctopError(ErrorCode.FORBIDDEN, "thread belongs to another expert")
     token = _token(services, user_id)
     if token is None:
         return {"enabled": False, "stores": [], "selected_store_id": None}
@@ -326,8 +333,12 @@ async def stores_for_user(
 
 async def initialize_store_for_new_thread(services: Any, user_id: int, thread_id: str) -> None:
     """Persist the first authorized store before a new thread can send its first turn."""
+    thread = _owned_thread(services, user_id, thread_id)
+    agent = services.agent_repo.get(thread.agent_id)
+    if agent is None or not selector_enabled(agent.chat_selectors, XM_STORE):
+        return
     try:
-        await stores_for_user(services, user_id, thread_id)
+        await stores_for_user(services, user_id, thread_id, thread.agent_id)
     except OctopError as exc:
         if exc.code not in (ErrorCode.INTERNAL_ERROR, ErrorCode.TOKEN_EXPIRED):
             raise
@@ -336,9 +347,19 @@ async def initialize_store_for_new_thread(services: Any, user_id: int, thread_id
 
 
 async def select_store_for_user(
-    services: Any, user_id: int, store_id: str | None, thread_id: str | None = None
+    services: Any,
+    user_id: int,
+    store_id: str | None,
+    thread_id: str | None = None,
+    agent_id: str | None = None,
 ) -> None:
     thread = _owned_thread(services, user_id, thread_id) if thread_id else None
+    if agent_id is not None:
+        agent = services.agent_repo.get(agent_id)
+        if agent is None or not selector_enabled(agent.chat_selectors, XM_STORE):
+            raise OctopError(ErrorCode.FORBIDDEN, "store selector is not enabled")
+        if thread and thread.agent_id != agent_id:
+            raise OctopError(ErrorCode.FORBIDDEN, "thread belongs to another expert")
     token = _token(services, user_id)
     if token is None:
         raise OctopError(ErrorCode.FORBIDDEN, "company login required")

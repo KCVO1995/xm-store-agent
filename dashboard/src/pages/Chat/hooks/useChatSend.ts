@@ -28,6 +28,9 @@ interface UseChatSendParams {
   selectedModel: string | null;
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
+  selectedCourseIds: string[];
+  courseSelectorEnabled: boolean;
+  courseSelectionReady: boolean;
   selectedTargetAgents?: string[];
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
@@ -49,6 +52,7 @@ interface UseChatSendParams {
     reasoningEffort?: string | null,
     conversationMode?: "ask" | "plan" | "craft" | null,
     hitlPolicy?: HitlSessionPolicy | null,
+    qixuebaoCourseIds?: string[] | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   renameSession: (id: string, name: string) => void;
@@ -85,6 +89,9 @@ export function useChatSend({
   selectedModel,
   selectedConnectors,
   selectedKnowledgeBaseIds,
+  selectedCourseIds,
+  courseSelectorEnabled,
+  courseSelectionReady,
   selectedTargetAgents = [],
   reasoningMode,
   reasoningEffort,
@@ -133,6 +140,12 @@ export function useChatSend({
       const targetAgents = restricted
         ? []
         : overrides?.selectedTargetAgents ?? selectedTargetAgents;
+      const courseIds =
+        courseSelectorEnabled &&
+        courseSelectionReady &&
+        agent === resolvedAgentId
+          ? [...selectedCourseIds]
+          : undefined;
       const modelSelection =
         overrides?.selectedModel !== undefined
           ? overrides.selectedModel
@@ -174,6 +187,7 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          courseIds,
         );
       };
 
@@ -236,6 +250,7 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          courseIds,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -253,6 +268,9 @@ export function useChatSend({
       selectedModel,
       selectedConnectors,
       selectedKnowledgeBaseIds,
+      selectedCourseIds,
+      courseSelectorEnabled,
+      courseSelectionReady,
       selectedTargetAgents,
       reasoningMode,
       reasoningEffort,

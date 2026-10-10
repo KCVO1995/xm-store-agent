@@ -43,6 +43,10 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Knowledge base ids to retrieve for this request (empty disables defaults).",
     )
+    qixuebao_course_ids: list[str] | None = Field(
+        default=None,
+        description="Selected QiXueBao course IDs for this conversation; [] means all.",
+    )
     skills: list[str] | None = Field(
         default=None,
         description="Skill names to enable for this request (empty list disables all skills).",
@@ -89,6 +93,9 @@ class ChatTurnBody(BaseModel):
             knowledge_base_ids=payload.get("knowledge_base_ids")
             if isinstance(payload.get("knowledge_base_ids"), list)
             else None,
+            qixuebao_course_ids=payload.get("qixuebao_course_ids")
+            if isinstance(payload.get("qixuebao_course_ids"), list)
+            else None,
             skills=payload.get("skills")
             if isinstance(payload.get("skills"), list)
             else payload.get("skills"),
@@ -132,6 +139,7 @@ class UserTurnWsFrame(BaseModel):
     hitl_policy: HitlSessionPolicyBody | None = None
     mcp_servers: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
+    qixuebao_course_ids: list[str] | None = None
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
     target_agent_ids: list[str] | None = None
