@@ -49,6 +49,7 @@ class PublishedExpertInstallOptions:
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
     color: str | None = None
     agent_id: str | None = None
     icon_url: str | None = None
@@ -398,6 +399,7 @@ async def install_published_expert(
             skill_package_ids=package_ids,
             knowledge_base_ids=options.knowledge_base_ids,
             mcp_servers=options.mcp_servers,
+            chat_selectors=options.chat_selectors,
             published_expert_id=row.id,
             welcome_message=options.welcome_message,
         ),

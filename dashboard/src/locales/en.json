@@ -896,6 +896,9 @@
     "connectorsLabel": "Optional Connectors",
     "connectorsHint": "Opened by default in new chats with this expert; you can turn them off in the console.",
     "connectorsPlaceholder": "Select connectors",
+    "chatSelectorsLabel": "Chat options",
+    "chatSelectorsHint": "Choose the business selectors shown in this expert's chat",
+    "chatSelectorsPlaceholder": "Choose chat options",
     "manifestWriteFailed": "Page configuration could not be saved.",
     "manifestInvalidJson": "Page configuration was not saved because manifest.json is not valid JSON.",
     "pageConfigTitle": "Page Configuration",
@@ -1150,6 +1153,10 @@
     "storePlaceholder": "Select a store",
     "storeLoadRetry": "Store list failed; retry",
     "storeSelectFailed": "Could not select store; retry",
+    "courseSelector": "QiXueBao courses",
+    "courseAll": "All courses",
+    "courseLoadRetry": "Failed to load courses; retry",
+    "courseSelectFailed": "Failed to select courses. Please retry.",
     "sharedExpert": {
       "banner": "Shared expert · provided by {{name}}",
       "flag": "Shared"

@@ -109,6 +109,8 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert "user_policies" in table_names
     assert "agent_team_members" not in table_names
     assert "kind" in agent_cols
+    assert "chat_selectors" in agent_cols
+    assert "chat_context_json" in thread_cols
     assert {"email", "sso_provider_id", "sso_subject"}.issubset(cols)
     assert {"kind", "extra"}.issubset(sso_cols)
     assert "idx_sso_providers_kind" in sso_indexes
@@ -163,6 +165,34 @@ def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
     assert "task_type" in cron_cols
     assert "name" in cron_cols
+
+
+def test_folded_chat_selectors_repair_existing_version_18(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO agents(agent_id, name, template_name, created_at, updated_at) "
+            "VALUES ('store-agent', '门店助手', 'xm-store-assistant', 1, 1)"
+        )
+        conn.execute("ALTER TABLE agents DROP COLUMN chat_selectors")
+        conn.execute("ALTER TABLE threads DROP COLUMN chat_context_json")
+    run_migrations(pool)
+    with pool.connect() as conn:
+        row = conn.execute(
+            "SELECT chat_selectors FROM agents WHERE agent_id = 'store-agent'"
+        ).fetchone()
+        assert row["chat_selectors"] == '["xm_store"]'
+        assert "chat_context_json" in {
+            col["name"] for col in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
+        conn.execute("UPDATE agents SET chat_selectors = '[]' WHERE agent_id = 'store-agent'")
+    run_migrations(pool)
+    with pool.connect() as conn:
+        row = conn.execute(
+            "SELECT chat_selectors FROM agents WHERE agent_id = 'store-agent'"
+        ).fetchone()
+        assert row["chat_selectors"] == "[]"
 
 
 def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) -> None:

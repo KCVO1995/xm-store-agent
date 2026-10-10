@@ -32,6 +32,7 @@ from octop.infra.agents.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     agent_runtime_values,
 )
+from octop.infra.chat_selectors import parse_chat_selectors, validate_chat_selectors
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import user_has_permission
 
@@ -57,6 +58,7 @@ class AgentCreateBody(AgentRuntimeFields):
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
 
 
 class AgentPatchBody(AgentRuntimeFields):
@@ -76,6 +78,7 @@ class AgentPatchBody(AgentRuntimeFields):
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
 
 
 def _attach_unread_counts(
@@ -186,6 +189,7 @@ def _row_dict(
             if (getattr(row, "kind", None) or "expert") == "team"
             else id_list_from_row(row, "mcp_servers")
         ),
+        "chat_selectors": parse_chat_selectors(row.chat_selectors),
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
@@ -325,6 +329,11 @@ async def create_agent(
         welcome_message=body.welcome_message,
         knowledge_base_ids=knowledge_ids,
         mcp_servers=mcp_servers,
+        chat_selectors=(
+            validate_chat_selectors(body.chat_selectors)
+            if body.chat_selectors is not None
+            else None
+        ),
     )
     row = await server.app_runtime.agent_registry.create(spec)
     return _row_dict(
@@ -405,6 +414,7 @@ async def patch_agent(
             "skill_package_ids",
             "knowledge_base_ids",
             "mcp_servers",
+            "chat_selectors",
         }
     }
     if body.config is not None:
@@ -429,6 +439,13 @@ async def patch_agent(
             row = refreshed
     if body.mcp_servers is not None:
         server.app_runtime.agent_registry.persist_mcp_servers(agent_id, body.mcp_servers)
+        refreshed = server.app_runtime.agent_registry.get_row(agent_id)
+        if refreshed is not None:
+            row = refreshed
+    if body.chat_selectors is not None:
+        server.app_runtime.agent_registry.persist_chat_selectors(
+            agent_id, validate_chat_selectors(body.chat_selectors)
+        )
         refreshed = server.app_runtime.agent_registry.get_row(agent_id)
         if refreshed is not None:
             row = refreshed

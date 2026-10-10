@@ -55,6 +55,8 @@ export interface OctopAgent {
   knowledge_base_ids?: string[];
   /** Connectors opened by default in new chats with this expert. */
   mcp_servers?: string[];
+  /** Business selectors shown in this expert's chat composer. */
+  chat_selectors?: string[];
   /** Aggregated unread count across all sessions for this agent (current user). */
   unread_count?: number;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */

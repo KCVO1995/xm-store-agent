@@ -14,4 +14,11 @@ CREATE TABLE IF NOT EXISTS boh_report_snapshots (
     PRIMARY KEY (snapshot_id, page_index)
 );
 CREATE INDEX IF NOT EXISTS idx_boh_report_snapshots_expiry ON boh_report_snapshots(expires_at);
+
+-- Per-expert chat selectors and per-thread selected context.
+ALTER TABLE agents ADD COLUMN chat_selectors TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE threads ADD COLUMN chat_context_json TEXT NOT NULL DEFAULT '{}';
+UPDATE agents SET chat_selectors = '["xm_store"]'
+WHERE template_name = 'xm-store-assistant' OR name = '门店助手';
+
 UPDATE _schema_version SET version = 18;

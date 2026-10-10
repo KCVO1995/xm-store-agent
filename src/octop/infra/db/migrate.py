@@ -1423,6 +1423,20 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "xm_store_id", "TEXT")
 
 
+def _ensure_chat_selectors_schema(db: DatabasePool) -> None:
+    if _table_exists(db, "agents"):
+        was_missing = "chat_selectors" not in _table_columns(db, "agents")
+        _ensure_column(db, "agents", "chat_selectors", "TEXT NOT NULL DEFAULT '[]'")
+        if was_missing:
+            with db.connect() as conn:
+                conn.execute(
+                    "UPDATE agents SET chat_selectors = ? WHERE template_name = ? OR name = ?",
+                    ('["xm_store"]', "xm-store-assistant", "门店助手"),
+                )
+    if _table_exists(db, "threads"):
+        _ensure_column(db, "threads", "chat_context_json", "TEXT NOT NULL DEFAULT '{}'")
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1589,6 +1603,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     multi-identity ``user_sso_identities``.
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
+        Version 18 adds BOH snapshots and expert chat selectors.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1704,6 +1719,25 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 18:
+        with db.connect() as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS boh_report_snapshots ("
+                "snapshot_id TEXT NOT NULL, page_index INTEGER NOT NULL, "
+                "user_id INTEGER NOT NULL, agent_id TEXT NOT NULL, "
+                "thread_id TEXT NOT NULL, store_id TEXT NOT NULL, "
+                "report_kind TEXT NOT NULL, query_json TEXT NOT NULL, "
+                "total INTEGER NOT NULL, payload BLOB NOT NULL, "
+                "expires_at INTEGER NOT NULL, PRIMARY KEY (snapshot_id, page_index))"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_boh_report_snapshots_expiry "
+                "ON boh_report_snapshots(expires_at)"
+            )
+        _ensure_chat_selectors_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1748,4 +1782,5 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_agent_teams_schema(db)
     _ensure_thread_conversation_mode_schema(db)
     _ensure_agent_profile_columns(db)
+    _ensure_chat_selectors_schema(db)
     _ensure_sso_provider_kind_schema(db)

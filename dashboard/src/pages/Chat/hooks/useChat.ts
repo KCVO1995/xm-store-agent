@@ -860,6 +860,7 @@ export function useChat(
       reasoningEffort?: string | null,
       conversationMode?: "ask" | "plan" | "craft" | null,
       hitlPolicy?: HitlSessionPolicy | null,
+      qixuebaoCourseIds?: string[] | null,
     ) => {
       const key = storeKey || stableSessionId;
 
@@ -894,6 +895,7 @@ export function useChat(
         reasoningEffort,
         conversationMode,
         hitlPolicy,
+        qixuebaoCourseIds,
       );
     },
     [stableSessionId],

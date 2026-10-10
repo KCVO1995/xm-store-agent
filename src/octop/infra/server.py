@@ -371,9 +371,11 @@ class OctopServer:
             ensure_boh_skill_package,
             mount_existing_store_assistants,
         )
+        from octop.infra.yuxue import ensure_yuxue_connector_for_user  # noqa: PLC0415
 
         for company in self.services.connector_repo.list_by_kind("xm-store"):
             ensure_boh_connector_for_user(self.services, company.user_id)
+            ensure_yuxue_connector_for_user(self.services, company.user_id)
         boh_skill_package_id = ensure_boh_skill_package(self.services, self.paths)
         mount_existing_store_assistants(self.services, boh_skill_package_id)
 

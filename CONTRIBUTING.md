@@ -10,8 +10,8 @@ Thank you for your interest in contributing! Octop is the control-plane applicat
 git clone https://github.com/TencentCloud/Octop.git octop
 cd octop
 make install          # backend dev dependencies
-make install-hooks    # once per clone: pre-commit runs make all + dashboard build
-make all              # format-all + backend lint + typecheck + test (ship bar)
+make install-hooks    # once per clone: affected tests + build when dashboard changes
+make precommit        # format-all + backend lint + typecheck + affected tests
 ```
 
 For frontend work (separate terminal):
@@ -28,11 +28,16 @@ make check-all        # full stack quality gate
 | Command | Description |
 |---------|-------------|
 | `make install` | Install Python dev dependencies |
-| `make install-hooks` | Point git at `.githooks` (pre-commit: `make all` + dashboard build) |
+| `make install-hooks` | Point git at `.githooks` (pre-commit: `make precommit` + build when dashboard changes) |
+| `make precommit` | Local format/lint/typecheck + testmon-scoped tests |
 | `make all` | `format-all` + backend lint + typecheck + test |
 | `make check-all` | Full stack quality gate |
 | `make dev` | Start frontend + backend dev servers |
 | `make build` | Build dashboard + Python wheel |
+
+Choose local checks by change scope (see [AGENTS.md](AGENTS.md) §6). Styles need visual inspection; frontend behavior needs type checking and relevant Vitest cases; backend behavior needs lint/type checks and affected unit/integration tests. Database, authentication, and shared infrastructure changes also need relevant integration coverage. CI retains full Linux/Windows suites; run full checks before releasing a commit without successful CI. Deploying the same tested commit needs the artifact and startup/health checks, without repeating the full suite. Testmon's first run may create a full-test baseline.
+
+Use Vite during frontend development. Build the static dashboard when needed; `make build-frontend` reuses npm dependencies until `package.json` or `package-lock.json` changes (or `node_modules` is removed).
 
 ## Branching
 
@@ -60,7 +65,7 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 1. Fork (if needed) and create a feature branch from **`develop`**
 2. Open the PR with base **`develop`** (not `main`, unless it is a release or hotfix)
 3. Add or update tests for behavior changes — CI runs on **Linux and Windows**; follow the cross-platform rules in [AGENTS.md](AGENTS.md) §7 (prefer `tmp_path` / `pathlib`, `fake_bin_path` for mocked binaries, `posix_only` for Unix-only cases)
-4. Ensure `make install-hooks` is enabled locally; run `make all` (backend) or `make check-all` (full stack) before submitting — pre-commit enforces the same gate
+4. Ensure `make install-hooks` is enabled locally; run the checks for the affected scope before submitting — pre-commit runs `make precommit` and builds the dashboard when its files are staged; CI runs the full suites
 5. Update `CHANGELOG.md` when user-facing behavior changes
 6. Open a PR with a clear description and test plan
 
@@ -93,16 +98,20 @@ Branch from `main` → PR into `main` (tag if shipping a patch) → PR into `dev
 git clone https://github.com/TencentCloud/Octop.git octop
 cd octop
 make install
-make install-hooks    # 每个 clone 执行一次：提交前跑 make all + 前端 build
-make all              # format-all + 后端 lint / typecheck / test
+make install-hooks    # 每个 clone 执行一次：增量测试 + 有前端改动才 build
+make precommit        # format-all + 后端 lint / typecheck + 受影响的测试
 ```
 
 前端开发（另开终端）：
 
 ```bash
 make dev-frontend
-make check-all        # 全栈质量门禁
+make typecheck-frontend
 ```
+
+按改动范围选择本地检查，详见 [AGENTS.md](AGENTS.md) §6：纯样式改动只做视觉检查；前端逻辑跑类型检查和相关 Vitest 用例；后端逻辑跑 lint、类型检查及受影响的单元/集成测试；数据库、认证、公共基础模块补充相关集成验证。CI 保留 Linux / Windows 全量测试；未通过 CI 的提交在发版前执行全量检查。同一已验证提交的部署只需准备产物并检查启动和健康状态。Testmon 首次运行可能执行全量测试以建立基线。
+
+前端开发使用 Vite，需要静态产物时执行 `make build-frontend`。首次构建安装 npm 依赖，后续复用；`package.json`、`package-lock.json` 变更或删除 `node_modules` 后重新安装。提交钩子使用 `make precommit`，仅当暂存的 `dashboard/` 文件发生改动（含删除、重命名）时构建前端。
 
 ## 分支策略
 
@@ -125,7 +134,7 @@ make check-all        # 全栈质量门禁
 1. 从 **`develop`** 创建特性分支
 2. PR 的 base 选 **`develop`**（release / hotfix 除外）
 3. 补充测试（CI 同时跑 **Linux / Windows**，路径与假二进制遵循 [AGENTS.md](AGENTS.md) §7）
-4. 本地执行过 `make install-hooks`；提交前 `make all` 或 `make check-all` 必须绿（hooks 会强制执行）
+4. 本地执行过 `make install-hooks`；提交前完成改动范围对应的检查（hooks 跑 `make precommit`，有前端改动才构建；CI 跑全量测试）
 5. 用户可见变更时更新 `CHANGELOG.md`
 6. 提交 Pull Request
 

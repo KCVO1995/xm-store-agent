@@ -65,6 +65,7 @@ from octop.infra.backend.resolver import (
     resolve_agent_backend_spec,
     windows_neutralize_host_root,
 )
+from octop.infra.chat_selectors import XM_STORE, validate_chat_selectors
 from octop.infra.connectors.builder import (
     build_mcp_server_configs_for_user,
     gateway_mcp_server_names,
@@ -305,6 +306,7 @@ class AgentCreateSpec:
     welcome_message: str | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+    chat_selectors: list[str] | None = None
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
     kind: str = "expert"
@@ -655,6 +657,17 @@ class AgentManager:
                 knowledge_base_ids=knowledge_ids_json,
                 mcp_servers=mcp_servers_json,
                 kind=spec.kind if spec.kind in {"expert", "team"} else "expert",
+                chat_selectors=json.dumps(
+                    validate_chat_selectors(
+                        spec.chat_selectors
+                        if spec.chat_selectors is not None
+                        else (
+                            [XM_STORE]
+                            if spec.template_name == "xm-store-assistant" or spec.name == "门店助手"
+                            else []
+                        )
+                    )
+                ),
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
@@ -2107,6 +2120,14 @@ class AgentManager:
         self._repos.agent_repo.update_config(
             agent_id,
             mcp_servers=dump_id_list(normalized),
+        )
+
+    def persist_chat_selectors(self, agent_id: str, selectors: list[str]) -> None:
+        """Persist dashboard selectors without reloading the harness."""
+        if self._repos.agent_repo.get(agent_id) is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        self._repos.agent_repo.update_config(
+            agent_id, chat_selectors=json.dumps(validate_chat_selectors(selectors))
         )
 
     def validate_knowledge_base_ids(self, user_id: int, knowledge_base_ids: list[str]) -> list[str]:

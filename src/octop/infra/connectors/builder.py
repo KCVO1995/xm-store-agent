@@ -592,6 +592,18 @@ def inject_missing_gateway_tools(
             continue
         if inst.mcp_server_name not in wanted:
             continue
+        if inst.kind == "yuxue":
+            from octop.infra.yuxue import build_yuxue_tools
+
+            if repos is not None:
+                extra.extend(
+                    tool
+                    for tool in build_yuxue_tools(
+                        mcp_server_name=inst.mcp_server_name, repos=repos, agent_id=agent_id
+                    )
+                    if tool.name not in tool_set
+                )
+            continue
         if inst.kind == "boh":
             from octop.infra.boh import build_boh_report_tools
 

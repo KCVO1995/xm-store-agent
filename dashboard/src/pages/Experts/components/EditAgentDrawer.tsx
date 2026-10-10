@@ -99,6 +99,7 @@ interface AgentDetail {
   welcome_message?: string | null;
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
+  chat_selectors?: string[];
   config?: Record<string, unknown>;
 }
 
@@ -147,6 +148,7 @@ interface EditFormValues {
   enable_trajectory?: boolean;
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
+  chat_selectors?: string[];
 }
 
 interface EditAgentDrawerProps {
@@ -322,6 +324,9 @@ function EditAgentDrawerBody({
             ? ag.knowledge_base_ids
             : [],
           mcp_servers: Array.isArray(ag.mcp_servers) ? ag.mcp_servers : [],
+          chat_selectors: Array.isArray(ag.chat_selectors)
+            ? ag.chat_selectors
+            : [],
         });
         setLoading(false);
 
@@ -481,6 +486,7 @@ function EditAgentDrawerBody({
           welcome_message: stored.welcome_message ?? "",
           knowledge_base_ids: stored.knowledge_base_ids ?? [],
           mcp_servers: stored.mcp_servers ?? [],
+          chat_selectors: stored.chat_selectors ?? [],
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });

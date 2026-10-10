@@ -110,6 +110,24 @@ export default function ExpertComposerDefaultsFields() {
           placeholder={t("experts.connectorsPlaceholder")}
         />
       </Form.Item>
+      <Form.Item
+        name="chat_selectors"
+        label={t("experts.chatSelectorsLabel", "聊天选项")}
+        extra={t("experts.chatSelectorsHint", "选择此专家聊天窗显示的业务选项")}
+      >
+        <Select
+          mode="multiple"
+          allowClear
+          options={[
+            { value: "xm_store", label: t("chat.storeSelector", "门店") },
+            {
+              value: "qixuebao_course",
+              label: t("chat.courseSelector", "企学宝课程"),
+            },
+          ]}
+          placeholder={t("experts.chatSelectorsPlaceholder", "选择聊天选项")}
+        />
+      </Form.Item>
     </>
   );
 }

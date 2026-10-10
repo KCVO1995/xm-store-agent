@@ -515,6 +515,19 @@
     },
     "preflight_failed_summary": "One or more preflight checks failed"
   },
+  "yuxue": {
+    "company_login_required": "Sign in with your company account first.",
+    "company_relogin_required": "Your company session has expired. Sign in again to query course details.",
+    "thread_forbidden": "Only the store and courses selected in your own current conversation can be queried.",
+    "store_required": "Select a store in this conversation first.",
+    "store_forbidden": "Your account cannot access the selected store. Select an authorized store again.",
+    "course_forbidden": "Your account cannot access course details.",
+    "course_selection_forbidden": "Ensure this expert has the QiXueBao course selector enabled, then select authorized courses again.",
+    "timeout": "The course detail query timed out. Try again later.",
+    "unavailable": "The Yuxue service is temporarily unavailable. Try again later.",
+    "result_too_large": "Course details exceed 256 KiB. Reduce pageSize or narrow the filters.",
+    "tool_description": "Query one page of staff learning details for the store and QiXueBao courses selected in this conversation. The server reads and checks these selections; an empty course list means all courses. No store, course ID, user, conversation or token arguments. courseStatus defaults to PUBLISHED (published/open); UNPUBLISHED and CLOSED are also supported. pageNum defaults to 1; pageSize defaults to 100, at most 1000. Optional courseName, staffName and baseIdList filters; completeStatus is a list of LS_NOTSTART (not started), LS_PROGRESS (in progress), LS_COMPLETED (completed) or LS_INCOMPLETE (incomplete). completeTimeStart/End and joinTimeStart/End are completion and joining date-time ranges. Preserves raw records, total, pages, current, size and staff information. One page is not the full result; retrieve later pages with the same filters."
+  },
   "boh": {
     "company_login_required": "Please sign in with your Shopkeeper account first.",
     "company_relogin_required": "Your Shopkeeper session has expired or lacks a WeCom ID. Please sign in again.",
