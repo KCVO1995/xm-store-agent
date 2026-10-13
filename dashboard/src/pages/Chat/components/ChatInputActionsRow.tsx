@@ -1177,7 +1177,9 @@ export default function ChatInputActionsRow({
 
   return (
     <div ref={actionsRowRef} className={styles.actionsRow}>
-      <div className={styles.secondaryActions}>{renderSecondaryActions()}</div>
+      <div className={styles.secondaryActions} hidden>
+        {renderSecondaryActions()}
+      </div>
       <div className={styles.inputActions}>
         <ContextWindowRing
           usedTokens={contextUsedTokens}
@@ -1187,49 +1189,32 @@ export default function ChatInputActionsRow({
           selectedConnectors={selectedConnectors}
           isMobile={isMobile}
         />
-        {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}
-        {useCompactControls ? (
-          <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>
-            <button
-              className={styles.newChatBtn}
-              onClick={onNewChat}
-              type="button"
-            >
-              <MessageSquarePlus size={16} strokeWidth={1.75} />
-            </button>
-          </Tooltip>
-        ) : (
-          <>
-            <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>
-              <button
-                className={styles.newChatBtn}
-                onClick={onNewChat}
-                type="button"
-              >
-                <MessageSquarePlus size={16} strokeWidth={1.75} />
-              </button>
-            </Tooltip>
-            <Tooltip title={t("chat.polish.tooltip")} mouseEnterDelay={0.4}>
-              <button
-                className={styles.secondaryBtn}
-                onClick={onPolish}
-                type="button"
-                disabled={
-                  !text.trim() ||
-                  polishing ||
-                  isStreaming ||
-                  disabled ||
-                  !agentId
-                }
-              >
-                <Wand2
-                  size={16}
-                  className={polishing ? styles.spinIcon : undefined}
-                />
-              </button>
-            </Tooltip>
-          </>
-        )}
+        <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>
+          <button
+            className={styles.newChatBtn}
+            onClick={onNewChat}
+            type="button"
+            aria-label={t("chatWelcome.newChat")}
+          >
+            <MessageSquarePlus size={16} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+        <Tooltip title={t("chat.polish.tooltip")} mouseEnterDelay={0.4}>
+          <button
+            className={styles.secondaryBtn}
+            onClick={onPolish}
+            type="button"
+            aria-label={t("chat.polish.tooltip")}
+            disabled={
+              !text.trim() || polishing || isStreaming || disabled || !agentId
+            }
+          >
+            <Wand2
+              size={16}
+              className={polishing ? styles.spinIcon : undefined}
+            />
+          </button>
+        </Tooltip>
         <Tooltip
           title={
             !_sttAvailable
@@ -1249,6 +1234,7 @@ export default function ChatInputActionsRow({
             type="button"
             disabled={disabled || isStreaming || transcribing || !_sttAvailable}
             onClick={onToggleVoice}
+            hidden
           >
             <Mic size={16} />
           </button>
@@ -1273,6 +1259,7 @@ export default function ChatInputActionsRow({
                   ? onStopBrowserRecording
                   : onStartBrowserRecording
               }
+              hidden
             >
               {browserRecording ? (
                 <Square size={15} />
@@ -1306,6 +1293,7 @@ export default function ChatInputActionsRow({
                 !browserLastRecordingId
               }
               onClick={onReplayBrowserRecording}
+              hidden
             >
               {browserReplayBusy ? (
                 <Loader2 size={16} className={styles.spinIcon} />

@@ -763,15 +763,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
-            selectedConnectors={selectedConnectors}
-            selectedModel={selectedModel}
-            availableConnectors={availableConnectors}
-            availableKnowledgeBases={availableKnowledgeBases}
             onRemoveAttachment={removeAttachment}
-            onConnectorsChange={onConnectorsChange}
-            selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
-            onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
-            onModelChange={onModelChange}
+            // Hide resource chips without changing the selected resources sent with messages.
+            selectedConnectors={[]}
+            selectedKnowledgeBaseIds={[]}
           />
 
           <div className={styles.inputRow} style={{ position: "relative" }}>

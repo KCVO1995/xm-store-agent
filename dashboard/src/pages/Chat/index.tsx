@@ -145,6 +145,14 @@ function ChatPageInner() {
     handleSidebarResizeStart,
   } = useChatSidebarState(isMobile);
 
+  // Open the desktop history rail on entry, including after mobile collapsed it.
+  // Users can still collapse it for the remainder of their current chat visit.
+  useEffect(() => {
+    if (!isMobile && !isMinimalLayout) {
+      setSidebarOpen(true);
+    }
+  }, [isMobile, isMinimalLayout, setSidebarOpen]);
+
   // Pre-fill text from router state or module-level pending prefill
   // (set by cron-jobs suggestions before navigating here).
   // Stored as a ref (not state) so it never triggers a parent re-render —
