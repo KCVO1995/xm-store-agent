@@ -174,6 +174,11 @@ export default function ChatSidebarPanel({
         <RailEdgeControl
           expanded={sidebarOpen}
           onToggle={handleRailToggle}
+          label={t(
+            sidebarOpen
+              ? "chat.collapseHistorySidebar"
+              : "chat.expandHistorySidebar",
+          )}
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}

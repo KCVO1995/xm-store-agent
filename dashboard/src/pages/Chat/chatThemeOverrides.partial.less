@@ -36,6 +36,10 @@
   left: -8px !important;
   right: auto !important;
   width: 16px;
+
+  button {
+    opacity: 1;
+  }
 }
 
 .sidebarWrapper {
@@ -655,8 +659,7 @@
     padding-top: 6px;
     padding-inline: 12px;
     padding-bottom: calc(
-      6px +
-        max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
+      6px + max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
     );
   }
 }
