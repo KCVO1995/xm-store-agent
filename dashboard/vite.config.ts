@@ -181,16 +181,7 @@ export default defineConfig(({ mode }) => {
         // Use public/manifest.json directly instead of auto-generating one.
         manifest: false,
         // Include the offline fallback in the SW precache.
-        includeAssets: [
-          "offline.html",
-          "logo_vertical_dark.svg",
-          "logo_vertical_white.svg",
-          "logo_horizontal_dark.png",
-          "logo_horizontal_white.png",
-          "pwa-192.png",
-          "pwa-512.png",
-          "apple-touch-icon.png",
-        ],
+        includeAssets: ["offline.html", "xiaomian-logo.png"],
         workbox: {
           // Precache hashed entry + vendor chunks. Do NOT precache index.html:
           // Cache-First on the shell pins a stale HTML that points at deleted
