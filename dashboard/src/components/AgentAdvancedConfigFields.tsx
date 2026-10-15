@@ -67,6 +67,27 @@ export function AgentAdvancedConfigFields({
       </Form.Item>
 
       <Form.Item
+        label={t("agentConfig.toolResultTokenLimit")}
+        name="tool_result_token_limit"
+        rules={[
+          {
+            type: "number",
+            min: 1,
+            message: t("agentConfig.toolResultTokenLimitMin"),
+          },
+        ]}
+        tooltip={t("agentConfig.toolResultTokenLimitTooltip")}
+      >
+        <InputNumber
+          style={{ width: "100%" }}
+          min={1}
+          precision={0}
+          step={1000}
+          placeholder={t("agentConfig.toolResultTokenLimitPlaceholder")}
+        />
+      </Form.Item>
+
+      <Form.Item
         label={t("experts.temperature")}
         name="temperature"
         tooltip={t("experts.temperatureTooltip")}

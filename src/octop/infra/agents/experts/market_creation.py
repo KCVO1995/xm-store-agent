@@ -61,6 +61,7 @@ class SkillHubMarketAgentCreateOptions:
     temperature: float | None = None
     top_p: float | None = None
     max_tokens: int | None = None
+    tool_result_token_limit: int | None = None
     enable_trajectory: bool = True
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
@@ -322,6 +323,7 @@ async def create_agent_from_skillhub_skillset(
                 "temperature": options.temperature,
                 "top_p": options.top_p,
                 "max_tokens": options.max_tokens,
+                "tool_result_token_limit": options.tool_result_token_limit,
             }.items()
             if value is not None
         },

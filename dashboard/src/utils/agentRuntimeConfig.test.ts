@@ -12,6 +12,7 @@ describe("agentRuntimeConfig", () => {
         max_iters: 10,
         max_input_length: "64000",
         temperature: 0.5,
+        tool_result_token_limit: "50000",
       }),
     ).toEqual({
       max_iters: 10,
@@ -19,6 +20,7 @@ describe("agentRuntimeConfig", () => {
       temperature: 0.5,
       top_p: undefined,
       max_tokens: undefined,
+      tool_result_token_limit: 50000,
     });
   });
 
@@ -28,10 +30,12 @@ describe("agentRuntimeConfig", () => {
         max_iters: 12,
         max_input_length: 32000,
         temperature: undefined,
+        tool_result_token_limit: 40000,
       }),
     ).toEqual({
       max_iters: 12,
       max_input_length: 32000,
+      tool_result_token_limit: 40000,
     });
   });
 
@@ -40,8 +44,15 @@ describe("agentRuntimeConfig", () => {
       omitAgentRuntimeConfig({
         max_iters: 12,
         temperature: 0.3,
+        tool_result_token_limit: 50000,
         plugins: {},
       }),
     ).toEqual({ plugins: {} });
+  });
+
+  it("clears the tool result limit to restore the runtime default", () => {
+    expect(buildAgentRuntimeRequest({}, { clearMissing: true })).toMatchObject({
+      tool_result_token_limit: null,
+    });
   });
 });

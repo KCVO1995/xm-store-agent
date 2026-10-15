@@ -50,6 +50,7 @@ export interface OctopAgent {
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  tool_result_token_limit?: number | null;
   config: Record<string, unknown>;
   /** Knowledge bases opened by default in new chats with this expert. */
   knowledge_base_ids?: string[];

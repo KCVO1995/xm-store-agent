@@ -6,6 +6,7 @@ export const AGENT_RUNTIME_CONFIG_KEYS = [
   "temperature",
   "top_p",
   "max_tokens",
+  "tool_result_token_limit",
 ] as const;
 
 export type AgentRuntimeConfigKey = (typeof AGENT_RUNTIME_CONFIG_KEYS)[number];
@@ -27,6 +28,7 @@ export function readAgentRuntimeFormValues(
     temperature: readNumber(record.temperature),
     top_p: readNumber(record.top_p),
     max_tokens: readNumber(record.max_tokens),
+    tool_result_token_limit: readNumber(record.tool_result_token_limit),
   };
 }
 

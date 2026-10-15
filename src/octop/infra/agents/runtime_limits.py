@@ -25,6 +25,7 @@ AGENT_RUNTIME_CONFIG_KEYS = (
     "temperature",
     "top_p",
     "max_tokens",
+    "tool_result_token_limit",
 )
 
 _DEFAULT_MAX_INPUT_TOKENS = 128_000
@@ -52,6 +53,11 @@ def agent_recursion_limit(cfg: dict[str, Any]) -> int | None:
 def agent_max_input_tokens(cfg: dict[str, Any]) -> int | None:
     """Return context-window cap override from ``max_input_length`` when configured."""
     return _positive_int(cfg.get("max_input_length"))
+
+
+def agent_tool_result_token_limit(cfg: dict[str, Any]) -> int | None:
+    """Return the approximate token cap for tool offloading and file reads."""
+    return _positive_int(cfg.get("tool_result_token_limit"))
 
 
 def _unit_float(value: Any, *, min_val: float, max_val: float) -> float | None:
@@ -176,6 +182,7 @@ __all__ = [
     "agent_model_settings",
     "agent_recursion_limit",
     "agent_runtime_values",
+    "agent_tool_result_token_limit",
     "apply_agent_runtime_to_stream_request",
     "merge_agent_runtime_values",
     "resolve_context_max_tokens",
