@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 
@@ -27,8 +29,24 @@ async def test_create_and_list(env):
     assert any(a["id"] == agent_id for a in r.json())
 
 
-async def test_agent_runtime_fields_are_first_class_api_fields(env):
-    c, _, auth = env
+async def test_agent_runtime_fields_are_first_class_api_fields(env, monkeypatch):
+    from deepagents.middleware.filesystem import FilesystemMiddleware
+
+    c, srv, auth = env
+    registry = srv.app_runtime.agent_registry
+    reload_finished = asyncio.Event()
+    original_reload = registry._reload_agent
+
+    async def track_reload(agent_id):
+        await original_reload(agent_id)
+        reload_finished.set()
+
+    monkeypatch.setattr(registry, "_reload_agent", track_reload)
+
+    def filesystems(agent_id):
+        config = registry._harness_manager.get_agent(agent_id).config
+        return [m for m in config.middleware or [] if isinstance(m, FilesystemMiddleware)]
+
     r = await c.post(
         "/api/agents",
         headers=auth,
@@ -39,6 +57,7 @@ async def test_agent_runtime_fields_are_first_class_api_fields(env):
             "temperature": 0.4,
             "top_p": 0.9,
             "max_tokens": 2048,
+            "tool_result_token_limit": 50_000,
         },
     )
     assert r.status_code == 201
@@ -49,19 +68,75 @@ async def test_agent_runtime_fields_are_first_class_api_fields(env):
     assert created["temperature"] == 0.4
     assert created["top_p"] == 0.9
     assert created["max_tokens"] == 2048
+    assert created["tool_result_token_limit"] == 50_000
+    assert "tool_result_token_limit" not in created["config"]
     assert "max_iters" not in created["config"]
+    assert filesystems(agent_id)[0]._tool_token_limit_before_evict == 50_000
 
     r = await c.patch(
         f"/api/agents/{agent_id}",
         headers=auth,
-        json={"max_iters": 23, "temperature": None},
+        json={"max_iters": 23, "temperature": None, "tool_result_token_limit": 32_000},
     )
     assert r.status_code == 200
     updated = r.json()
     assert updated["max_iters"] == 23
     assert updated["temperature"] is None
+    assert updated["tool_result_token_limit"] == 32_000
     assert "max_iters" not in updated["config"]
     assert "temperature" not in updated["config"]
+    await asyncio.wait_for(reload_finished.wait(), timeout=5)
+    assert filesystems(agent_id)[0]._tool_token_limit_before_evict == 32_000
+
+    reload_finished.clear()
+    r = await c.patch(
+        f"/api/agents/{agent_id}", headers=auth, json={"tool_result_token_limit": None}
+    )
+    assert r.status_code == 200
+    assert r.json()["tool_result_token_limit"] is None
+    await asyncio.wait_for(reload_finished.wait(), timeout=5)
+    assert filesystems(agent_id) == []
+    r = await c.get(f"/api/agents/{agent_id}", headers=auth)
+    assert r.json()["tool_result_token_limit"] is None
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1.5, True])
+async def test_tool_result_limit_rejects_invalid_values(env, limit):
+    c, _, auth = env
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={"name": "invalid-limit", "tool_result_token_limit": limit},
+    )
+    assert r.status_code == 422
+
+
+async def test_expert_edit_payload_preserves_tool_result_limit(env):
+    c, _, auth = env
+    created = await c.post(
+        "/api/agents", headers=auth, json={"name": "expert-edit", "tool_result_token_limit": 50_000}
+    )
+    assert created.status_code == 201
+    agent_id = created.json()["agent_id"]
+    updated = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={
+            "name": "renamed-expert",
+            "config": created.json()["config"],
+            "is_shared": False,
+            "welcome_message": "",
+            "knowledge_base_ids": [],
+            "mcp_servers": [],
+            "chat_selectors": [],
+            "tool_result_token_limit": 60_000,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["tool_result_token_limit"] == 60_000
+    reopened = await c.get(f"/api/agents/{agent_id}", headers=auth)
+    assert reopened.status_code == 200
+    assert reopened.json()["tool_result_token_limit"] == 60_000
 
 
 async def test_create_keeps_legacy_runtime_values_from_config(env):

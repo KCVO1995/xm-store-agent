@@ -17,6 +17,16 @@ class AgentRuntimeFields(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=2)
     top_p: float | None = Field(default=None, ge=0, le=1)
     max_tokens: int | None = Field(default=None, ge=1)
+    tool_result_token_limit: int | None = Field(
+        default=None,
+        ge=1,
+        strict=True,
+        description=(
+            "Approximate token limit before tool results are offloaded to a file; "
+            "also limits read_file output. Estimated at 4 characters per token. "
+            "Null restores the runtime default of 20,000."
+        ),
+    )
 
 
 def runtime_field_updates(

@@ -274,7 +274,10 @@ async def test_create_agent_from_expert_rejects_unknown_package_before_creation(
     }
 
 
-async def test_hub_install_mounts_skill_packages(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("token_limit", [None, 50_000])
+async def test_hub_install_mounts_skill_packages(
+    env: Any, monkeypatch: pytest.MonkeyPatch, token_limit: int | None
+) -> None:
     from octop.api.routers import experts as experts_router
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -297,6 +300,7 @@ async def test_hub_install_mounts_skill_packages(env: Any, monkeypatch: pytest.M
 
     async def fake_create_skillhub_market_agent(**kwargs: Any) -> Any:
         assert kwargs["options"].skill_package_ids == [package_id]
+        assert kwargs["options"].tool_result_token_limit == token_limit
         return SimpleNamespace(
             row=row,
             expert_id="hub-expert",
@@ -312,7 +316,7 @@ async def test_hub_install_mounts_skill_packages(env: Any, monkeypatch: pytest.M
     created = await c.post(
         "/api/experts/hub/hub-expert/install",
         headers=auth,
-        json={"skill_package_ids": [package_id]},
+        json={"skill_package_ids": [package_id], "tool_result_token_limit": token_limit},
     )
 
     assert created.status_code == 201, created.text

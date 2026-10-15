@@ -56,6 +56,7 @@ from octop.infra.agents.security.hitl_session import (
     hitl_thread_scope,
     thread_id_from_request,
 )
+from octop.infra.agents.tool_result_limits import apply_tool_result_limit
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
@@ -3271,6 +3272,7 @@ class AgentManager:
             harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
         applied = self._apply_team_host_config(applied, row)
+        applied = apply_tool_result_limit(applied, cfg, workspace_dir=workspace_dir)
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)

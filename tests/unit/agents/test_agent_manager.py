@@ -693,6 +693,23 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
     assert cfg.permissions is not None
 
 
+def test_build_harness_config_applies_tool_result_limit(manager: AgentManager) -> None:
+    from deepagents.middleware.filesystem import FilesystemMiddleware
+    from harness_agent.backends import spec_supports_execution
+
+    cfg = manager._build_harness_config(
+        _row(agent_id="AGT001", config_json=json.dumps({"tool_result_token_limit": 50_000}))
+    )
+    filesystems = [m for m in cfg.middleware or [] if isinstance(m, FilesystemMiddleware)]
+    assert len(filesystems) == 1
+    assert filesystems[0].backend is cfg.backend
+    assert filesystems[0]._tool_token_limit_before_evict == 50_000
+    assert spec_supports_execution(cfg.backend)
+    # Harness's execution guard still receives the original security rules.
+    assert cfg.permissions is not None
+    assert filesystems[0]._permissions == []
+
+
 @pytest.mark.asyncio
 async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
     await manager.boot()
@@ -1546,9 +1563,11 @@ async def test_create_keeps_user_workspace_dir(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("token_limit", [None, 50_000])
 async def test_create_persists_rootfs_workspace_under_scoped_root(
     manager: AgentManager,
     tmp_path: Path,
+    token_limit: int | None,
 ) -> None:
     """Non-host root_dir → config.workspace_dir is rootfs-absolute under that root."""
     from harness_agent import HarnessAgentManager
@@ -1566,6 +1585,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
         row = await manager.create(
             AgentCreateSpec(
                 name="scoped-ws",
+                runtime_config={"tool_result_token_limit": token_limit},
                 config={
                     **_MEMORY_OFF,
                     "backend": {
@@ -1582,6 +1602,8 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
         assert host == (tmp_path / ".octop" / "workspaces" / row.agent_id).resolve()
         assert host.is_dir()
         assert (host / "AGENTS.md").is_file()
+        agent = manager._harness_manager.get_agent(row.agent_id).agent
+        assert agent._workspace_path == host
         harness_cfg = manager._build_harness_config(row)
         # POSIX hands harness the persisted agent-facing path — not the host join.
         # Windows cannot express it as absolute, so harness gets the host mapping.

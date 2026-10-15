@@ -96,6 +96,7 @@ interface AgentDetail {
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  tool_result_token_limit?: number | null;
   welcome_message?: string | null;
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
@@ -145,6 +146,7 @@ interface EditFormValues {
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
+  tool_result_token_limit?: number;
   enable_trajectory?: boolean;
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
@@ -487,7 +489,7 @@ function EditAgentDrawerBody({
           knowledge_base_ids: stored.knowledge_base_ids ?? [],
           mcp_servers: stored.mcp_servers ?? [],
           chat_selectors: stored.chat_selectors ?? [],
-          ...buildAgentRuntimeRequest(values, { clearMissing: true }),
+          ...buildAgentRuntimeRequest(stored, { clearMissing: true }),
         }),
       });
 

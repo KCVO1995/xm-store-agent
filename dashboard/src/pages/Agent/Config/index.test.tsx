@@ -28,6 +28,7 @@ describe("AgentConfigPage", () => {
         temperature: 0.2,
         top_p: 0.9,
         max_tokens: 2048,
+        tool_result_token_limit: 50000,
       },
       refresh,
     } as never);
@@ -73,5 +74,26 @@ describe("AgentConfigPage", () => {
       );
     });
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("saves changes to the tool result limit and resets it when cleared", async () => {
+    render(<AgentConfigPage />);
+    const input = await screen.findByRole("spinbutton", {
+      name: /^agentConfig.toolResultTokenLimit/,
+    });
+    expect(input).toHaveValue("50000");
+    fireEvent.change(input, { target: { value: "40000" } });
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    expect(
+      JSON.parse(vi.mocked(request).mock.calls[0][1]!.body as string),
+    ).toMatchObject({ tool_result_token_limit: 40000 });
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(
+      JSON.parse(vi.mocked(request).mock.calls[1][1]!.body as string),
+    ).toMatchObject({ tool_result_token_limit: null });
   });
 });
